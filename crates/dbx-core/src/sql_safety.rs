@@ -163,11 +163,22 @@ fn has_unfiltered_destructive_write(sql: &str) -> bool {
                 return false;
             }
 
-            !statement[index + 1..]
-                .iter()
-                .any(|boundary| boundary.depth == token.depth && matches!(boundary.text.as_str(), "WHERE" | "LIMIT"))
+            !has_same_fragment_boundary(&statement, index, token.depth)
         })
     })
+}
+
+fn has_same_fragment_boundary(statement: &[SqlToken], destructive_write_index: usize, depth: usize) -> bool {
+    for boundary in &statement[destructive_write_index + 1..] {
+        if boundary.depth < depth {
+            break;
+        }
+        if boundary.depth == depth && matches!(boundary.text.as_str(), "WHERE" | "LIMIT") {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn executable_tokens(sql: &str) -> Vec<String> {
@@ -440,6 +451,26 @@ mod tests {
             )
             .risk_level,
             RiskLevel::Medium
+        );
+    }
+
+    #[test]
+    fn cte_destructive_writes_do_not_use_sibling_cte_boundaries() {
+        assert_eq!(
+            risk_for(
+                "WITH deleted AS (DELETE FROM users RETURNING id), scoped AS (SELECT id FROM audit WHERE id = 1) SELECT * FROM scoped",
+                RiskContext::new("dev")
+            )
+            .risk_level,
+            RiskLevel::Critical
+        );
+        assert_eq!(
+            risk_for(
+                "WITH updated AS (UPDATE users SET active = false RETURNING id), scoped AS (SELECT id FROM audit LIMIT 1) SELECT * FROM scoped",
+                RiskContext::new("dev")
+            )
+            .risk_level,
+            RiskLevel::Critical
         );
     }
 
