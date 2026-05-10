@@ -39,6 +39,8 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             commands::mcp_bridge::start(app_handle, state);
+            let runtime_state = commands::agent_runtime::start(app.handle().clone());
+            app.manage(runtime_state);
 
             #[cfg(not(target_os = "macos"))]
             {
@@ -57,6 +59,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::agent_runtime::agent_runtime_update_snapshot,
+            commands::agent_runtime::agent_runtime_load_handoffs,
             commands::ai::ai_complete,
             commands::ai::ai_stream,
             commands::ai::ai_cancel_stream,
@@ -145,6 +149,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = &event {
+                if let Some(runtime) = app_handle.try_state::<commands::agent_runtime::AgentRuntimeServer>() {
+                    runtime.cleanup();
+                }
+            }
+
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { has_visible_windows, .. } = &event {
                 if !has_visible_windows {
