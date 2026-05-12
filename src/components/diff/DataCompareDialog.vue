@@ -17,7 +17,7 @@ import {
 } from "@/lib/dataCompare";
 import * as api from "@/lib/api";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
-import { Copy, GitCompareArrows, Loader2, Play } from "lucide-vue-next";
+import { Copy, GitCompareArrows, Loader2, Play, ArrowLeftRight } from "lucide-vue-next";
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -56,6 +56,9 @@ const syncSql = ref("");
 const syncStatements = ref<string[]>([]);
 const comparing = ref(false);
 const executing = ref(false);
+const executedCount = ref(0);
+const executeTotal = ref(0);
+const syncErrors = ref<{ sql: string; error: string }[]>([]);
 const rowLimitOptions = [1000, 5000, 10000, 50000];
 
 const sqlConnections = computed(() =>
@@ -94,6 +97,31 @@ const isTargetTruncated = computed(() => targetRowCount.value !== null && target
 function connectionIconType(connectionId: string) {
   const config = store.getConfig(connectionId);
   return config?.driver_profile || config?.db_type || "mysql";
+}
+
+function swapSourceTarget() {
+  const tmpConnId = sourceConnectionId.value;
+  const tmpDb = sourceDatabase.value;
+  const tmpDbs = sourceDatabases.value;
+  const tmpSchema = sourceSchema.value;
+  const tmpSchemas = sourceSchemas.value;
+  const tmpTable = sourceTable.value;
+  const tmpTables = sourceTables.value;
+  sourceConnectionId.value = targetConnectionId.value;
+  sourceDatabase.value = targetDatabase.value;
+  sourceDatabases.value = targetDatabases.value;
+  sourceSchema.value = targetSchema.value;
+  sourceSchemas.value = targetSchemas.value;
+  sourceTable.value = targetTable.value;
+  sourceTables.value = targetTables.value;
+  targetConnectionId.value = tmpConnId;
+  targetDatabase.value = tmpDb;
+  targetDatabases.value = tmpDbs;
+  targetSchema.value = tmpSchema;
+  targetSchemas.value = tmpSchemas;
+  targetTable.value = tmpTable;
+  targetTables.value = tmpTables;
+  clearResult();
 }
 
 async function resolveSchema(connectionId: string, database: string, preferredSchema = ""): Promise<string> {
@@ -305,14 +333,25 @@ async function copySql() {
 async function executeSql() {
   if (!syncSql.value.trim() || syncStatements.value.length === 0 || executing.value) return;
   executing.value = true;
+  syncErrors.value = [];
+  executeTotal.value = syncStatements.value.length;
+  executedCount.value = 0;
   try {
-    await api.executeInTransaction(
-      targetConnectionId.value,
-      targetDatabase.value,
-      syncStatements.value,
-      targetSchema.value,
-    );
-    toast(t("dataCompare.syncSuccess"), 2000);
+    await store.ensureConnected(targetConnectionId.value);
+    for (const stmt of syncStatements.value) {
+      try {
+        await api.executeQuery(targetConnectionId.value, targetDatabase.value, stmt, targetSchema.value);
+      } catch (e: any) {
+        syncErrors.value.push({ sql: stmt, error: e?.message || String(e) });
+      }
+      executedCount.value++;
+    }
+    const failed = syncErrors.value.length;
+    if (failed === 0) {
+      toast(t("dataCompare.syncSuccess"), 2000);
+    } else {
+      toast(t("diff.syncSummary", { success: syncStatements.value.length - failed, failed }), 5000);
+    }
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
   } finally {
@@ -401,7 +440,7 @@ watch(open, async (value) => {
       </DialogHeader>
 
       <div class="flex-1 min-h-0 overflow-auto space-y-4 py-2">
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
           <div class="space-y-2">
             <Label class="text-xs font-medium">{{ t("diff.source") }}</Label>
             <Select
@@ -450,6 +489,12 @@ watch(open, async (value) => {
                 <SelectItem v-for="table in sourceTables" :key="table" :value="table">{{ table }}</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div class="flex items-center pt-6">
+            <Button variant="ghost" size="icon" class="h-7 w-7" :title="t('diff.swap')" @click="swapSourceTarget">
+              <ArrowLeftRight class="w-3.5 h-3.5" />
+            </Button>
           </div>
 
           <div class="space-y-2">
@@ -558,9 +603,27 @@ watch(open, async (value) => {
         <div v-else-if="result" class="text-sm text-muted-foreground">
           {{ t("dataCompare.noDifferences") }}
         </div>
+
+        <!-- Sync Errors -->
+        <div v-if="syncErrors.length > 0" class="space-y-1">
+          <Label class="text-xs font-medium text-destructive">
+            {{ t("diff.syncSummary", { success: executeTotal - syncErrors.length, failed: syncErrors.length }) }}
+          </Label>
+          <div class="max-h-32 overflow-auto border rounded-lg bg-destructive/5 p-2 space-y-1">
+            <div v-for="(err, i) in syncErrors" :key="i" class="text-xs font-mono">
+              <span class="text-destructive">{{ err.error }}</span>
+              <span class="text-muted-foreground ml-1"
+                >— {{ err.sql.slice(0, 80) }}{{ err.sql.length > 80 ? "..." : "" }}</span
+              >
+            </div>
+          </div>
+        </div>
       </div>
 
       <DialogFooter v-if="result && syncSql.trim()" class="flex items-center gap-2">
+        <span v-if="executing" class="text-xs text-muted-foreground mr-auto">
+          {{ t("diff.syncProgress", { current: executedCount, total: executeTotal }) }}
+        </span>
         <Button variant="outline" size="sm" @click="copySql">
           <Copy class="w-3 h-3 mr-1" /> {{ t("diff.copySql") }}
         </Button>

@@ -892,6 +892,9 @@ export default {
     copySql: "复制 SQL",
     executeSync: "执行同步",
     syncSuccess: "同步执行成功",
+    swap: "交换源和目标",
+    syncProgress: "执行中: {current}/{total}",
+    syncSummary: "成功 {success} 条，失败 {failed} 条",
   },
   dataCompare: {
     title: "比较数据",

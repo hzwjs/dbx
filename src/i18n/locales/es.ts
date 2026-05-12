@@ -909,6 +909,9 @@ export default {
     copySql: "Copiar SQL",
     executeSync: "Ejecutar sincronización",
     syncSuccess: "Sincronización ejecutada exitosamente",
+    swap: "Intercambiar origen y destino",
+    syncProgress: "Ejecutando: {current}/{total}",
+    syncSummary: "Exitosos {success}, fallidos {failed}",
   },
   dataCompare: {
     title: "Comparar datos",

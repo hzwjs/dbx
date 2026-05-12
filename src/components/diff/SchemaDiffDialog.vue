@@ -20,7 +20,11 @@ import {
   type TableDiff,
 } from "@/lib/schemaDiff";
 import { useToast } from "@/composables/useToast";
-import { Loader2, Copy, Play, GitCompareArrows } from "lucide-vue-next";
+import { Loader2, Copy, Play, GitCompareArrows, ArrowLeftRight } from "lucide-vue-next";
+
+interface SelectableTableDiff extends TableDiff {
+  selected: boolean;
+}
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -46,10 +50,27 @@ const targetSchema = ref("");
 const targetSchemas = ref<string[]>([]);
 
 const step = ref<"select" | "comparing" | "result">("select");
-const diffs = ref<TableDiff[]>([]);
-const syncSql = ref("");
+const diffs = ref<SelectableTableDiff[]>([]);
 const loadingMeta = ref(false);
 const executing = ref(false);
+const executedCount = ref(0);
+const executeTotal = ref(0);
+const syncErrors = ref<{ sql: string; error: string }[]>([]);
+
+const allSelected = computed(() => diffs.value.length > 0 && diffs.value.every((d) => d.selected));
+const someSelected = computed(() => diffs.value.some((d) => d.selected) && !allSelected.value);
+
+function toggleAll() {
+  const next = !allSelected.value;
+  diffs.value.forEach((d) => (d.selected = next));
+}
+
+const syncSql = computed(() => {
+  const selected = diffs.value.filter((d) => d.selected);
+  if (selected.length === 0) return "";
+  const srcConfig = store.getConfig(targetConnectionId.value);
+  return generateSyncSql(selected, srcConfig?.db_type || "mysql", targetSchema.value);
+});
 
 const sqlConnections = computed(() =>
   store.connections.filter((c) => !["redis", "mongodb", "elasticsearch"].includes(c.db_type)),
@@ -68,6 +89,25 @@ const canCompare = computed(
 function connectionIconType(connectionId: string) {
   const config = store.getConfig(connectionId);
   return config?.driver_profile || config?.db_type || "mysql";
+}
+
+function swapSourceTarget() {
+  const tmpConnId = sourceConnectionId.value;
+  const tmpDb = sourceDatabase.value;
+  const tmpDbs = sourceDatabases.value;
+  const tmpSchema = sourceSchema.value;
+  const tmpSchemas = sourceSchemas.value;
+  sourceConnectionId.value = targetConnectionId.value;
+  sourceDatabase.value = targetDatabase.value;
+  sourceDatabases.value = targetDatabases.value;
+  sourceSchema.value = targetSchema.value;
+  sourceSchemas.value = targetSchemas.value;
+  targetConnectionId.value = tmpConnId;
+  targetDatabase.value = tmpDb;
+  targetDatabases.value = tmpDbs;
+  targetSchema.value = tmpSchema;
+  targetSchemas.value = tmpSchemas;
+  resetResult();
 }
 
 async function loadDatabases(connectionId: string, side: "source" | "target") {
@@ -132,7 +172,6 @@ async function startCompare() {
   if (!canCompare.value) return;
   step.value = "comparing";
   diffs.value = [];
-  syncSql.value = "";
 
   try {
     await store.ensureConnected(sourceConnectionId.value);
@@ -152,23 +191,23 @@ async function startCompare() {
     const { added, removed, common } = diffTables(srcTableNames, tgtTableNames);
     const { added: addedViews, removed: removedViews } = diffTables(srcViewNames, tgtViewNames);
 
-    const result: TableDiff[] = [];
+    const result: SelectableTableDiff[] = [];
 
     for (const name of added) {
       const ddl = await api.getTableDdl(sourceConnectionId.value, sourceDatabase.value, sourceSchema.value, name);
-      result.push({ type: "added", objectType: "table", name, ddl });
+      result.push({ type: "added", objectType: "table", name, ddl, selected: true });
     }
 
     for (const name of removed) {
-      result.push({ type: "removed", objectType: "table", name });
+      result.push({ type: "removed", objectType: "table", name, selected: true });
     }
 
     for (const name of addedViews) {
-      result.push({ type: "added", objectType: "view", name });
+      result.push({ type: "added", objectType: "view", name, selected: true });
     }
 
     for (const name of removedViews) {
-      result.push({ type: "removed", objectType: "view", name });
+      result.push({ type: "removed", objectType: "view", name, selected: true });
     }
 
     for (const name of common) {
@@ -208,13 +247,12 @@ async function startCompare() {
           triggers: triggerDiffs.length > 0 ? triggerDiffs : undefined,
           sourceTableComment: commentChanged ? srcComment : undefined,
           targetTableComment: commentChanged ? tgtComment : undefined,
+          selected: true,
         });
       }
     }
 
     diffs.value = result;
-    const srcConfig = store.getConfig(targetConnectionId.value);
-    syncSql.value = generateSyncSql(result, srcConfig?.db_type || "mysql", targetSchema.value);
     step.value = "result";
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
@@ -223,13 +261,35 @@ async function startCompare() {
 }
 
 async function executeSql() {
-  if (!syncSql.value.trim() || executing.value) return;
+  const sql = syncSql.value.trim();
+  if (!sql || executing.value) return;
   executing.value = true;
+  syncErrors.value = [];
+
+  const statements = sql
+    .split(/;\s*\n/)
+    .map((s) => s.trim())
+    .filter((s) => s && !s.startsWith("--"));
+  executeTotal.value = statements.length;
+  executedCount.value = 0;
+
   try {
     await store.ensureConnected(targetConnectionId.value);
-    await api.executeScript(targetConnectionId.value, targetDatabase.value, syncSql.value, targetSchema.value);
-    toast(t("diff.syncSuccess"), 2000);
-    open.value = false;
+    for (const stmt of statements) {
+      try {
+        await api.executeQuery(targetConnectionId.value, targetDatabase.value, stmt, targetSchema.value);
+      } catch (e: any) {
+        syncErrors.value.push({ sql: stmt, error: e?.message || String(e) });
+      }
+      executedCount.value++;
+    }
+    const failed = syncErrors.value.length;
+    if (failed === 0) {
+      toast(t("diff.syncSuccess"), 2000);
+      open.value = false;
+    } else {
+      toast(t("diff.syncSummary", { success: statements.length - failed, failed }), 5000);
+    }
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
   } finally {
@@ -257,7 +317,9 @@ function diffLabel(type: string) {
 function resetResult() {
   step.value = "select";
   diffs.value = [];
-  syncSql.value = "";
+  syncErrors.value = [];
+  executedCount.value = 0;
+  executeTotal.value = 0;
 }
 
 watch(sourceConnectionId, (id) => {
@@ -291,7 +353,9 @@ watch(open, async (val) => {
   if (val) {
     step.value = "select";
     diffs.value = [];
-    syncSql.value = "";
+    syncErrors.value = [];
+    executedCount.value = 0;
+    executeTotal.value = 0;
     if (props.prefillConnectionId) {
       sourceConnectionId.value = props.prefillConnectionId;
       await loadDatabases(props.prefillConnectionId, "source");
@@ -316,7 +380,7 @@ watch(open, async (val) => {
 
       <div class="flex-1 min-h-0 overflow-auto space-y-4 py-2">
         <!-- Source / Target Selection -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
           <div class="space-y-2">
             <Label class="text-xs font-medium">{{ t("diff.source") }}</Label>
             <Select
@@ -366,6 +430,12 @@ watch(open, async (val) => {
                 <SelectItem v-for="schema in sourceSchemas" :key="schema" :value="schema">{{ schema }}</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div class="flex items-center pt-6">
+            <Button variant="ghost" size="icon" class="h-7 w-7" :title="t('diff.swap')" @click="swapSourceTarget">
+              <ArrowLeftRight class="w-3.5 h-3.5" />
+            </Button>
           </div>
 
           <div class="space-y-2">
@@ -445,6 +515,15 @@ watch(open, async (val) => {
                 <table class="w-full text-xs table-fixed">
                   <thead class="bg-muted sticky top-0 z-10">
                     <tr>
+                      <th class="px-2 py-2 w-8">
+                        <input
+                          type="checkbox"
+                          class="accent-primary"
+                          :checked="allSelected"
+                          :indeterminate="someSelected"
+                          @change="toggleAll"
+                        />
+                      </th>
                       <th class="text-left px-3 py-2 font-medium w-1/4">{{ t("diff.table") }}</th>
                       <th class="text-left px-3 py-2 font-medium w-16">{{ t("diff.status") }}</th>
                       <th class="text-left px-3 py-2 font-medium">{{ t("diff.details") }}</th>
@@ -452,6 +531,9 @@ watch(open, async (val) => {
                   </thead>
                   <tbody>
                     <tr v-for="d in diffs" :key="d.name" class="border-t border-border/50 hover:bg-accent/30">
+                      <td class="px-2 py-1.5">
+                        <input v-model="d.selected" type="checkbox" class="accent-primary" />
+                      </td>
                       <td class="px-3 py-1.5 font-mono truncate">{{ d.name }}</td>
                       <td class="px-3 py-1.5">
                         <Badge :variant="diffBadgeVariant(d.type)" class="text-[10px] h-4 px-1.5">
@@ -531,15 +613,34 @@ watch(open, async (val) => {
             <div class="space-y-1">
               <Label class="text-xs font-medium">{{ t("diff.generatedSql") }}</Label>
               <textarea
-                v-model="syncSql"
+                :value="syncSql"
+                readonly
                 class="w-full h-48 rounded-lg border bg-muted/20 p-3 font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
               />
+            </div>
+
+            <!-- Sync Errors -->
+            <div v-if="syncErrors.length > 0" class="space-y-1">
+              <Label class="text-xs font-medium text-destructive">
+                {{ t("diff.syncSummary", { success: executeTotal - syncErrors.length, failed: syncErrors.length }) }}
+              </Label>
+              <div class="max-h-32 overflow-auto border rounded-lg bg-destructive/5 p-2 space-y-1">
+                <div v-for="(err, i) in syncErrors" :key="i" class="text-xs font-mono">
+                  <span class="text-destructive">{{ err.error }}</span>
+                  <span class="text-muted-foreground ml-1"
+                    >— {{ err.sql.slice(0, 80) }}{{ err.sql.length > 80 ? "..." : "" }}</span
+                  >
+                </div>
+              </div>
             </div>
           </template>
         </template>
       </div>
 
       <DialogFooter v-if="step === 'result' && diffs.length > 0" class="flex items-center gap-2">
+        <span v-if="executing" class="text-xs text-muted-foreground mr-auto">
+          {{ t("diff.syncProgress", { current: executedCount, total: executeTotal }) }}
+        </span>
         <Button variant="outline" size="sm" @click="copySql">
           <Copy class="w-3 h-3 mr-1" /> {{ t("diff.copySql") }}
         </Button>
