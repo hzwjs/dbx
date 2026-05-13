@@ -20,6 +20,8 @@ const typeMap: Record<string, { dbType: DatabaseType; profile: string; label: st
   redis: { dbType: "redis", profile: "redis", label: "Redis", port: 6379, user: "" },
   mongodb: { dbType: "mongodb", profile: "mongodb", label: "MongoDB", port: 27017, user: "" },
   mongo: { dbType: "mongodb", profile: "mongodb", label: "MongoDB", port: 27017, user: "" },
+  dameng: { dbType: "dameng", profile: "dm", label: "DM (Dameng)", port: 5236, user: "SYSDBA" },
+  dm: { dbType: "dameng", profile: "dm", label: "DM (Dameng)", port: 5236, user: "SYSDBA" },
 };
 
 const unsupportedTypes = new Set(["http", "https", "ftp", "sftp", "ssh"]);
