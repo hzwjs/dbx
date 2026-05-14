@@ -1606,6 +1606,7 @@ dependencies = [
  "csv",
  "duckdb",
  "futures",
+ "iana-time-zone",
  "log",
  "mongodb",
  "percent-encoding",
