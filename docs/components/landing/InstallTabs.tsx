@@ -91,7 +91,7 @@ export function InstallTabs({ lang }: InstallTabsProps) {
         aria-controls="landing-install-menu"
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="landing-install-trigger grid grid-cols-[auto_minmax(0,1fr)_auto] gap-4 items-center w-[min(400px,calc(100vw-48px))] min-h-[68px] border-0 rounded-full mx-auto px-7 cursor-pointer"
+        className="landing-install-trigger grid grid-cols-[auto_minmax(0,1fr)_auto] gap-4 items-center w-[min(340px,calc(100vw-48px))] min-h-[68px] border-0 rounded-full mx-auto px-6 cursor-pointer"
         href={primary.href}
         onFocus={() => setOpen(true)}
       >
@@ -103,7 +103,7 @@ export function InstallTabs({ lang }: InstallTabsProps) {
         <ChevronDown size={18} />
       </a>
       <div
-        className="landing-install-menu absolute z-30 top-[calc(100%+12px)] left-1/2 -translate-x-1/2 grid w-[min(360px,calc(100vw-48px))] border border-[rgba(155,176,205,0.17)] rounded-xl py-1.5"
+        className="landing-install-menu absolute z-30 top-[calc(100%+12px)] left-1/2 -translate-x-1/2 grid w-[min(300px,calc(100vw-48px))] border border-[rgba(155,176,205,0.17)] rounded-xl py-1.5"
         id="landing-install-menu"
         role="listbox"
         aria-label={lang === 'cn' ? '下载选项' : 'Download options'}

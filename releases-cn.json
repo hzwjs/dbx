@@ -1,0 +1,2499 @@
+{
+  "updatedAt": "2026-05-16T08:28:26.680Z",
+  "releases": [
+    {
+      "tag": "v0.5.9",
+      "name": "v0.5.9",
+      "date": "2026-05-15",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "SQL 编辑器自动补全增强",
+              "desc": "全面改进 SQL 编辑器的自动补全体验，支持更精确的关键字、表名、列名补全，新增 SQL 诊断提示功能"
+            },
+            {
+              "title": "列格式化",
+              "desc": "数据表格新增列格式化功能，支持对列数据进行自定义格式化显示"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "Schema 选项重复加载",
+              "desc": "修复 Schema 选项在切换时被重复加载的问题"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.8",
+      "name": "v0.5.8",
+      "date": "2026-05-15",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "瀚高数据库支持",
+              "desc": "新增瀚高（Highgo）数据库连接支持"
+            },
+            {
+              "title": "侧边栏显示函数和存储过程",
+              "desc": "数据库对象树新增函数（Functions）和存储过程（Procedures）节点"
+            },
+            {
+              "title": "连接名称自动生成",
+              "desc": "新建连接时名称留空将根据主机和数据库信息自动生成"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "侧边栏树状态保持",
+              "desc": "修复删除表后树展开状态丢失、搜索后表子节点消失、嵌套置顶节点状态丢失等问题"
+            },
+            {
+              "title": "编辑器自动补全优化",
+              "desc": "修复输入标点符号后错误触发自动补全的问题"
+            },
+            {
+              "title": "编辑器保存行为修正",
+              "desc": "按上下文正确路由保存快捷键，对象源代码标签按上下文保存"
+            },
+            {
+              "title": "过期连接状态处理",
+              "desc": "修复连接断开后状态未正确更新的问题"
+            },
+            {
+              "title": "OceanBase 兼容性",
+              "desc": "OceanBase 连接使用裸 MySQL 协议选项以提升兼容性"
+            },
+            {
+              "title": "MongoDB Shell 查询",
+              "desc": "支持 MongoDB shell 格式的 find 查询语法"
+            },
+            {
+              "title": "JDBC URL 解析",
+              "desc": "支持解析 JDBC 连接 URL 自动填充连接信息"
+            },
+            {
+              "title": "表格表头对齐",
+              "desc": "修复水平滚动到末尾时表头与数据列未对齐的问题"
+            },
+            {
+              "title": "Windows 插件兼容",
+              "desc": "Windows 上优先使用 .bat 脚本启动 JDBC 驱动插件"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.7",
+      "name": "v0.5.7",
+      "date": "2026-05-14",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "驱动未安装自动引导",
+              "desc": "连接数据库时若驱动未安装，自动打开驱动管理器引导安装"
+            },
+            {
+              "title": "SQL 编辑器矩形选择",
+              "desc": "支持鼠标中键拖拽进行矩形区域选择"
+            },
+            {
+              "title": "侧边栏节点持久高亮",
+              "desc": "点击侧边栏树节点后保持选中高亮状态"
+            },
+            {
+              "title": "分页大小持久化",
+              "desc": "数据表格的每页行数设置在重启后保留"
+            },
+            {
+              "title": "Linux ARM64 构建",
+              "desc": "新增 Linux ARM64 (aarch64) 构建目标 (closes #272)"
+            },
+            {
+              "title": "R2 CDN 下载加速",
+              "desc": "应用更新、驱动和 JRE 下载迁移至 R2 CDN，通过竞速下载选择最快源"
+            },
+            {
+              "title": "Redis 键统计",
+              "desc": "Redis 数据库浏览器新增键统计追踪功能 (contributed by @Abeautifulsnow)"
+            },
+            {
+              "title": "MongoDB 旧版本支持",
+              "desc": "自动回退至 Agent 驱动以兼容 MongoDB 4.2 以下版本"
+            },
+            {
+              "title": "MongoDB 过滤与排序",
+              "desc": "MongoDB 表数据支持过滤和排序操作"
+            },
+            {
+              "title": "本地 JDBC 插件安装",
+              "desc": "支持从本地文件安装 JDBC 驱动插件"
+            },
+            {
+              "title": "MySQL 自动补全增强",
+              "desc": "新增 MySQL JSON 函数和常用内置函数的自动补全"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "选中高亮对比度提升",
+              "desc": "增强数据表格中选中行和单元格的高亮对比度"
+            },
+            {
+              "title": "PostgreSQL 时区同步",
+              "desc": "连接时自动同步客户端时区"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "Oracle 10g 图标",
+              "desc": "修复 Oracle 10g 驱动配置未显示 Oracle 图标的问题"
+            },
+            {
+              "title": "MySQL TLS 连接回退",
+              "desc": "MySQL 连接 TLS 握手失败时自动回退到非 SSL 模式"
+            },
+            {
+              "title": "Oracle 19c 兼容性",
+              "desc": "添加 `oracle.net.disableOob=true` 参数解决 Oracle 19c 连接问题"
+            },
+            {
+              "title": "达梦/Oracle Schema 展示",
+              "desc": "达梦和 Oracle 数据库直接在连接节点下显示 Schema (closes #259)"
+            },
+            {
+              "title": "ClickHouse 连接与只读",
+              "desc": "ClickHouse 表数据设为完全只读，修复连接测试和事务检测"
+            },
+            {
+              "title": "KingBase/Vastbase Schema 列表",
+              "desc": "修复人大金仓和瀚高数据库的 Schema 列表显示 (closes #203)"
+            },
+            {
+              "title": "过滤器搜索勾选",
+              "desc": "修复本地过滤器有搜索关键词时勾选值未正确应用的问题"
+            },
+            {
+              "title": "数据库置顶逻辑",
+              "desc": "修复数据库置顶/取消置顶后保存的 SQL 根节点位置异常 (closes #267)"
+            },
+            {
+              "title": "SQL 文件对话框样式",
+              "desc": "修复 SQL 文件对话框的下拉框和底部样式问题 (closes #271)"
+            },
+            {
+              "title": "PostgreSQL 表列表查询",
+              "desc": "使用 `pg_catalog` 替代 `information_schema` 优化表和 Schema 列表查询"
+            },
+            {
+              "title": "表格输入占位符",
+              "desc": "移除数据表格中多余的 WHERE 和 ORDER BY 输入占位符"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.6",
+      "name": "v0.5.6",
+      "date": "2026-05-14",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "驱动一键全部升级",
+              "desc": "驱动管理器新增「全部升级」按钮，可一键批量升级所有有可用更新的驱动，实时显示每个驱动的升级进度"
+            },
+            {
+              "title": "驱动安装提示可点击",
+              "desc": "连接时的驱动未安装提示现在可直接点击跳转到驱动管理器"
+            },
+            {
+              "title": "更新提醒徽章",
+              "desc": "每小时自动检查更新，有新版本时在界面显示提醒徽章"
+            },
+            {
+              "title": "系统 Java 运行时",
+              "desc": "驱动管理器支持选择系统 PATH 中的 Java 运行时，无需 DBX 托管 JRE"
+            },
+            {
+              "title": "MCP 数据桥接",
+              "desc": "新增 MCP bridge 数据端点，支持所有数据库类型"
+            },
+            {
+              "title": "转置面板拖拽调整",
+              "desc": "数据表格转置面板支持拖拽调整大小"
+            },
+            {
+              "title": "Ctrl+F 搜索浮层",
+              "desc": "数据表格工具栏搜索替换为 Ctrl+F 浮动搜索框"
+            },
+            {
+              "title": "导出选中行",
+              "desc": "支持导出数据表格中选中的行，支持批量恢复 (contributed by @Abeautifulsnow)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "Redis 键扫描加速",
+              "desc": "优化 Redis 键浏览器的扫描性能 (contributed by @yavon007)"
+            },
+            {
+              "title": "连接错误信息翻译",
+              "desc": "连接失败时的后端错误信息现在会翻译为当前语言显示"
+            },
+            {
+              "title": "数据库能力集中管理",
+              "desc": "前后端数据库特性能力检测重构为集中式管理"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "驱动安装提示",
+              "desc": "已安装驱动不再显示安装提示"
+            },
+            {
+              "title": "Informix 表格编辑",
+              "desc": "支持 Informix 表格直接编辑"
+            },
+            {
+              "title": "Neo4j 查询与编辑",
+              "desc": "修复 Neo4j 表查询和编辑功能"
+            },
+            {
+              "title": "Hive 查询兼容",
+              "desc": "修复 Hive 反引号引用、行编辑权限和事务支持检测"
+            },
+            {
+              "title": "Trino 浏览与编辑",
+              "desc": "支持 Trino schema 感知的表浏览和插入"
+            },
+            {
+              "title": "H2 侧边栏结构",
+              "desc": "修复 H2 数据库的侧边栏树形结构"
+            },
+            {
+              "title": "达梦连接导入",
+              "desc": "修复 Navicat 导入时达梦/DM 连接的识别"
+            },
+            {
+              "title": "虚拟列表闪烁",
+              "desc": "通过 CSS containment 减少树形虚拟列表的闪烁"
+            },
+            {
+              "title": "表格行定位",
+              "desc": "提交后保持行位置并保留脏单元格颜色"
+            },
+            {
+              "title": "表头控件宽度",
+              "desc": "修复表头控件宽度预留不足的问题"
+            },
+            {
+              "title": "Agent 非 UTF-8 输出",
+              "desc": "修复驱动进程非 UTF-8 输出导致的错误"
+            },
+            {
+              "title": "MongoDB 编辑刷新",
+              "desc": "修复 MongoDB 文档编辑后 JSON 查看器未刷新"
+            },
+            {
+              "title": "侧边栏分组刷新",
+              "desc": "修复分组对象节点的刷新问题"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.5",
+      "name": "v0.5.5",
+      "date": "2026-05-13",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "驱动管理",
+              "desc": "将驱动管理提取为独立标签页，支持注册表缓存、版本/大小徽章展示、刷新按钮，合并 JDBC 和 Agent 驱动为统一的\"驱动\"标签"
+            },
+            {
+              "title": "数据库导出",
+              "desc": "支持将整个数据库导出为 SQL 文件"
+            },
+            {
+              "title": "数据库对比增强",
+              "desc": "新增选择性同步、交换按钮和执行进度显示，工具栏增加\"对比数据库\"和\"对比数据\"按钮"
+            },
+            {
+              "title": "多行选择与批量操作",
+              "desc": "数据表格支持多行选择，批量克隆、删除和复制，支持多行范围复制"
+            },
+            {
+              "title": "Copy as INSERT",
+              "desc": "支持将多行数据复制为 INSERT 语句"
+            },
+            {
+              "title": "克隆行",
+              "desc": "右键菜单新增\"克隆行\"功能 (closes #227)"
+            },
+            {
+              "title": "系统主题模式",
+              "desc": "新增跟随系统的主题模式"
+            },
+            {
+              "title": "Redis 成员详情",
+              "desc": "新增 Redis 成员详情查看器，Sheet UI 组件及列表/集合 API"
+            },
+            {
+              "title": "Schema 感知 SQL 补全",
+              "desc": "SQL 编辑器支持带 schema 前缀的表名补全"
+            },
+            {
+              "title": "SQL Server 补全",
+              "desc": "新增 SQL Server 关键字和语法自动补全"
+            },
+            {
+              "title": "MySQL/Postgres 查询行数限制",
+              "desc": "支持设置查询结果最大行数"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "JVM 冷启动加速",
+              "desc": "新增 JVM 启动参数优化，复用守护进程避免重复 JVM 冷启动"
+            },
+            {
+              "title": "AI 流式取消优化",
+              "desc": "使用 `tokio::select` 实现 AI 流式输出即时取消"
+            },
+            {
+              "title": "主题切换优化",
+              "desc": "通过抑制 CSS 过渡消除主题切换延迟"
+            },
+            {
+              "title": "GitHub 代理竞速",
+              "desc": "驱动下载和注册表拉取并行竞速多个 GitHub 代理"
+            },
+            {
+              "title": "AI 上下文加速",
+              "desc": "并行加载 schema 元数据以加快 AI 上下文构建"
+            },
+            {
+              "title": "Redis 键扫描分页",
+              "desc": "Redis 键扫描改为分页加载，优化大量键的浏览体验"
+            },
+            {
+              "title": "操作反馈",
+              "desc": "连接操作和 Redis 复制操作新增 toast 提示反馈"
+            },
+            {
+              "title": "历史记录分类与虚拟化",
+              "desc": "历史记录按类型分类并支持虚拟滚动"
+            },
+            {
+              "title": "侧边栏截断提示",
+              "desc": "截断的名称显示 tooltip，支持横向滚动 (closes #231)"
+            },
+            {
+              "title": "Agent 事务批量提交",
+              "desc": "使用单次 `execute_transaction` RPC 实现批量提交"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "结果标签页滚动",
+              "desc": "修复执行多条查询时结果标签页无法滚动的问题 (closes #245)"
+            },
+            {
+              "title": "Schema 选择器预加载",
+              "desc": "修复 schema 选择器可见时选项未预加载的问题 (closes #244)"
+            },
+            {
+              "title": "Elasticsearch HTTPS",
+              "desc": "支持 Elasticsearch 的 HTTPS 和自签名证书连接"
+            },
+            {
+              "title": "Windows JDBC 启动器",
+              "desc": "修复 Windows 上 JDBC 插件启动失败 (os error 193)"
+            },
+            {
+              "title": "SQL Server 批处理语义",
+              "desc": "保留 CTE 和 DECLARE 语句的批处理语义"
+            },
+            {
+              "title": "WHERE 过滤输入同步",
+              "desc": "修复 WHERE 过滤条件输入时未实时同步到 tab store"
+            },
+            {
+              "title": "Oracle 查询路径",
+              "desc": "更新 rust-oracle 修复查询路径中的 bit vector 丢失问题"
+            },
+            {
+              "title": "侧边栏搜索排序",
+              "desc": "搜索结果按匹配分数排序"
+            },
+            {
+              "title": "NOT NULL 验证",
+              "desc": "排除有默认值的列的 NOT NULL 校验"
+            },
+            {
+              "title": "NULL 列 INSERT",
+              "desc": "跳过 INSERT 中的 null 列以应用数据库默认值"
+            },
+            {
+              "title": "更新器版本显示",
+              "desc": "修复更新器显示错误的应用版本号和 release notes"
+            },
+            {
+              "title": "SQL 补全过滤",
+              "desc": "修复 SQL 补全的表名过滤"
+            },
+            {
+              "title": "SQL 安全分类",
+              "desc": "修复 SQL 风险分类、CTE 兄弟片段和子查询边界误判"
+            },
+            {
+              "title": "活动行高亮",
+              "desc": "数据表格高亮当前活动行，新增首页/末页分页按钮"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.4",
+      "name": "v0.5.4",
+      "date": "2026-05-12",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "JDBC SSH 隧道和代理支持",
+              "desc": "JDBC 连接新增 SSH 隧道和代理支持，自动解析和改写 JDBC URL 中的 host:port，通过隧道安全访问远程数据库"
+            },
+            {
+              "title": "对象浏览器分组与右键菜单",
+              "desc": "对象浏览器按类型分组显示数据库对象，新增右键上下文菜单操作"
+            },
+            {
+              "title": "Redis 批量操作和命令行",
+              "desc": "Redis 新增批量键操作和命令执行器"
+            },
+            {
+              "title": "数据库代理支持",
+              "desc": "新增数据库连接和 AI 的代理 (Proxy) 支持"
+            },
+            {
+              "title": "数据表格 LIKE/NOT LIKE 过滤",
+              "desc": "右键菜单新增 LIKE、NOT LIKE、大于、小于等过滤条件"
+            },
+            {
+              "title": "数据库对象源码编辑",
+              "desc": "支持查看和编辑数据库对象（存储过程、函数、视图等）的源码"
+            },
+            {
+              "title": "Connection URL 动态占位符",
+              "desc": "连接对话框根据数据库类型动态显示对应的 URL 格式示例 (contributed by @Abeautifulsnow)"
+            },
+            {
+              "title": "AI Thinking 开关",
+              "desc": "AI 设置新增 thinking 开关，可关闭本地模型（如 Ollama/vLLM）的思考输出以节省 token (contributed by @rarnu)"
+            },
+            {
+              "title": "PostgreSQL 新类型支持",
+              "desc": "新增 PostgreSQL 整数数组和 float4 类型支持 (contributed by @xKrah)"
+            },
+            {
+              "title": "西班牙语支持",
+              "desc": "新增西班牙语本地化，重构语言切换为下拉菜单 (contributed by @Max29xD)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "设置页面优化",
+              "desc": "AI 模型设置移至全局设置页面，优化设置页面布局和选中项样式 (contributed by @rarnu)"
+            },
+            {
+              "title": "单元格值不再截断",
+              "desc": "修复详情面板和复制/导出操作中单元格值被截断为 256 字符的问题，现在显示完整内容 (contributed by @Abeautifulsnow)"
+            },
+            {
+              "title": "虚拟滚动优化",
+              "desc": "优化数据表格虚拟滚动，减少快速滚动时的白屏闪烁"
+            },
+            {
+              "title": "数据表格工具栏",
+              "desc": "优化数据表格工具栏布局"
+            },
+            {
+              "title": "Redis 键浏览器国际化",
+              "desc": "Redis 键浏览器新增国际化支持 (contributed by @xKrah)"
+            },
+            {
+              "title": "设置页面链接",
+              "desc": "改进设置对话框中的链接显示"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "Oracle RAC/SCAN 连接",
+              "desc": "修复 Oracle RAC/SCAN 连接重定向问题 (closes #209)"
+            },
+            {
+              "title": "Oracle 表数据加载与编辑",
+              "desc": "修复 Oracle 表数据加载和编辑功能异常"
+            },
+            {
+              "title": "Oracle Schema 切换",
+              "desc": "简化编辑器选择器并支持 schema 切换 (closes #205)"
+            },
+            {
+              "title": "Oracle 非英文 Windows 连接错误",
+              "desc": "修复 Oracle 在非英文 Windows 系统上的连接错误检测 (closes #208)"
+            },
+            {
+              "title": "Oracle Schema Diff",
+              "desc": "加速 Oracle schema diff 并增加注释同步 (closes #198)"
+            },
+            {
+              "title": "侧边栏性能",
+              "desc": "修复 100+ 数据库时侧边栏 UI 卡顿 (closes #201)"
+            },
+            {
+              "title": "侧边栏搜索",
+              "desc": "修复侧边栏搜索无法找到被对象浏览器隐藏的表"
+            },
+            {
+              "title": "侧边栏刷新",
+              "desc": "修复展开节点刷新时子节点缓存未清除的问题"
+            },
+            {
+              "title": "WHERE 过滤持久化",
+              "desc": "修复 WHERE 过滤条件在 tab 切换时丢失的问题 (closes #210)"
+            },
+            {
+              "title": "数据表格分页",
+              "desc": "修复保存数据后分页大小被重置的问题"
+            },
+            {
+              "title": "Enter 键补全",
+              "desc": "修复 Enter 键优先选中自动补全建议项 (closes #202)"
+            },
+            {
+              "title": "SQL Server 对象源码",
+              "desc": "修复 SQL Server 对象源码定义保存问题"
+            },
+            {
+              "title": "构建修复",
+              "desc": "修复单引号导致构建失败的问题 (contributed by @xKrah)"
+            },
+            {
+              "title": "侧边栏双击",
+              "desc": "修复侧边栏需要双击才能打开对象浏览器的问题"
+            },
+            {
+              "title": "虚拟树优化",
+              "desc": "修复非空树的虚拟化判断函数"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.3",
+      "name": "v0.5.3",
+      "date": "2026-05-10",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "AI SQL 智能执行",
+              "desc": "AI 助手支持自动执行 SQL 语句，内置安全防护策略，根据语句类型自动判断是否允许执行"
+            },
+            {
+              "title": "MongoDB 表视图",
+              "desc": "新增 MongoDB 集合的表格视图，支持内联编辑数据"
+            },
+            {
+              "title": "导入 DBeaver 连接",
+              "desc": "支持从 DBeaver 导入数据库连接配置"
+            },
+            {
+              "title": "导入 Navicat 连接",
+              "desc": "支持从 Navicat NCX 文件导入数据库连接配置"
+            },
+            {
+              "title": "存储过程/函数浏览",
+              "desc": "对象浏览器支持显示存储过程和函数"
+            },
+            {
+              "title": "虚拟对象浏览器",
+              "desc": "新增虚拟对象浏览器，统一展示数据库对象"
+            },
+            {
+              "title": "数据库活动历史",
+              "desc": "支持追踪和查看数据库操作历史记录"
+            },
+            {
+              "title": "外部表格数据源基础",
+              "desc": "新增外部表格数据源的通用底座架构，为后续接入 CSV/XLSX/在线表格等数据源奠定基础 (contributed by @BlueSkyXN)"
+            },
+            {
+              "title": "数据表格加载指示器",
+              "desc": "数据表格新增加载遮罩层和耗时计时器，查询执行状态一目了然"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "编辑器增强",
+              "desc": "编辑器功能增强、DataGrid 重构和侧边栏交互改进"
+            },
+            {
+              "title": "XLSX 导出",
+              "desc": "表格右键菜单新增 XLSX 导出选项"
+            },
+            {
+              "title": "全栈性能优化",
+              "desc": "全栈性能优化和安全加固"
+            },
+            {
+              "title": "Oracle 加载提速",
+              "desc": "优化 Oracle 数据库初始表加载速度"
+            },
+            {
+              "title": "DuckDB 编译优化",
+              "desc": "DuckDB 捆绑编译改为可选，减小构建体积"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "侧边栏树状态",
+              "desc": "修复侧边栏树状态显示问题"
+            },
+            {
+              "title": "GitHub 链接",
+              "desc": "修复设置页面 About 中 GitHub 链接不可点击的问题"
+            },
+            {
+              "title": "Web 连接池",
+              "desc": "修复带前缀的 Web 连接池被意外断开的问题"
+            },
+            {
+              "title": "连接配置缓存",
+              "desc": "修复 Web 连接配置缓存同步问题"
+            },
+            {
+              "title": "Oracle Schema 缓存",
+              "desc": "修复 Oracle Schema 缓存刷新和表列表不完整的问题"
+            },
+            {
+              "title": "Oracle NCHAR 解码",
+              "desc": "修复 Oracle NCHAR 值解码不正确的问题"
+            },
+            {
+              "title": "侧边栏搜索折叠",
+              "desc": "修复侧边栏搜索结果无法折叠的问题"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.2",
+      "name": "v0.5.2",
+      "date": "2026-05-10",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "JDBC 插件支持",
+              "desc": "新增可选的 JDBC 插件模块，支持通过 JDBC 驱动连接更多数据库类型"
+            },
+            {
+              "title": "SQL 代码库",
+              "desc": "支持保存和管理常用 SQL 语句，存储在应用数据库中，随时复用"
+            },
+            {
+              "title": "DataGrip 风格列过滤器",
+              "desc": "数据表格支持类似 DataGrip 的列过滤功能，快速筛选数据"
+            },
+            {
+              "title": "数据对比与结构同步",
+              "desc": "新增数据对比和表结构同步功能"
+            },
+            {
+              "title": "连接 URL 和 XLSX 导出",
+              "desc": "支持通过连接 URL 快速创建连接，支持导出数据为 XLSX 格式"
+            },
+            {
+              "title": "连接颜色标识",
+              "desc": "连接支持自定义颜色标识，方便区分不同环境"
+            },
+            {
+              "title": "表格剪贴板快捷键",
+              "desc": "数据表格支持复制粘贴等剪贴板快捷键操作"
+            },
+            {
+              "title": "布局偏好设置",
+              "desc": "支持自定义界面布局偏好"
+            },
+            {
+              "title": "SSH 超时配置",
+              "desc": "SSH 隧道连接支持配置超时时间"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "界面外观优化",
+              "desc": "优化面板、标签页和应用整体外观布局"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "Redis 键表列对齐",
+              "desc": "修复 Redis 键表格列宽未对齐的问题"
+            },
+            {
+              "title": "连接状态同步",
+              "desc": "修复展开缓存树时连接状态未同步的问题"
+            },
+            {
+              "title": "连接对话框错误",
+              "desc": "修复连接对话框的错误提示问题"
+            },
+            {
+              "title": "SQL 注释后查询检测",
+              "desc": "修复 SQL 注释后的结果查询未被正确检测的问题"
+            },
+            {
+              "title": "列过滤弹窗优化",
+              "desc": "优化列过滤弹窗的交互体验"
+            },
+            {
+              "title": "查询标签页持久化",
+              "desc": "修复未保存的查询标签页丢失的问题"
+            },
+            {
+              "title": "隐藏系统数据库对象",
+              "desc": "修复侧栏显示系统数据库对象的问题"
+            },
+            {
+              "title": "文件选择器行为",
+              "desc": "修复 Web 版文件选择器的行为不一致问题"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.1",
+      "name": "v0.5.1",
+      "date": "2026-05-09",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "设置页关于标签",
+              "desc": "设置对话框新增\"关于\"标签页，方便查看版本信息"
+            },
+            {
+              "title": "数据库对象列表缓存",
+              "desc": "侧栏数据库对象列表支持缓存，减少重复查询，加速切换"
+            },
+            {
+              "title": "从分组菜单创建连接",
+              "desc": "侧栏分组右键菜单支持直接创建新连接"
+            },
+            {
+              "title": "编辑器 Tab 缩进",
+              "desc": "SQL 编辑器支持 Tab 键缩进"
+            },
+            {
+              "title": "Windows 绿色版压缩包",
+              "desc": "新增 Windows 便携版（ZIP），无需安装即可使用"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "查询结果流式加载",
+              "desc": "查询结果使用流式传输并限制行数，提升大数据量查询的响应速度"
+            },
+            {
+              "title": "侧栏搜索性能优化",
+              "desc": "侧栏搜索匹配算法优化，过滤速度更快"
+            },
+            {
+              "title": "表格右键菜单增强",
+              "desc": "数据表格右键菜单功能增强"
+            },
+            {
+              "title": "数据表工具栏条件刷新",
+              "desc": "修复表数据编辑的工具栏，条件过滤和刷新不再丢失状态 (contributed by @rarnu)"
+            },
+            {
+              "title": "AI 对话历史可切换",
+              "desc": "AI 助手对话历史支持开关控制"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "SQL Server 编辑支持",
+              "desc": "修复 SQL Server 数据编辑相关问题"
+            },
+            {
+              "title": "更新后重启",
+              "desc": "修复应用更新后重启失败的问题"
+            },
+            {
+              "title": "表格翻页滚动位置",
+              "desc": "修复翻页后表格滚动位置未重置的问题"
+            },
+            {
+              "title": "MySQL 事务编辑",
+              "desc": "修复 MySQL 事务编辑使用原始 SQL 执行的问题"
+            },
+            {
+              "title": "侧栏刷新保持展开",
+              "desc": "修复侧栏刷新后树节点展开状态丢失的问题"
+            },
+            {
+              "title": "标题栏双击切换",
+              "desc": "修复标题栏双击时窗口状态重复切换的问题 (#179)"
+            },
+            {
+              "title": "默认库过滤数据库树",
+              "desc": "修复默认数据库配置过滤数据库树显示的问题 (#175)"
+            },
+            {
+              "title": "标签文字被箭头遮挡",
+              "desc": "修复标签页滚动箭头与文字重叠的问题"
+            },
+            {
+              "title": "表格与弹窗布局",
+              "desc": "优化表格与 SQL 文件弹窗的布局显示"
+            },
+            {
+              "title": "事务状态位置",
+              "desc": "事务状态指示移至操作按钮旁边，更直观"
+            },
+            {
+              "title": "WHERE/ORDER BY 条件",
+              "desc": "修复 WHERE 和 ORDER BY 输入框条件重复和状态丢失的问题"
+            },
+            {
+              "title": "默认数据库处理",
+              "desc": "统一默认数据库的处理逻辑"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.5.0",
+      "name": "v0.5.0",
+      "date": "2026-05-09",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "Redis 浏览器全面重构",
+              "desc": "键浏览器升级为 Navicat 风格表格视图，支持键值编辑、分页浏览和全库键扫描 (contributed by @Bacon2994)"
+            },
+            {
+              "title": "自定义标题栏",
+              "desc": "窗口标题栏改为自定义样式，集成窗口控制按钮"
+            },
+            {
+              "title": "数据表格 WHERE/ORDER BY 过滤",
+              "desc": "数据表格新增独立的 WHERE 和 ORDER BY 输入框，支持自定义条件过滤和排序 (#165)"
+            },
+            {
+              "title": "结果集数据过滤",
+              "desc": "查询结果集内支持对已加载数据进行实时过滤 (contributed by @rarnu)"
+            },
+            {
+              "title": "单元格值编辑器",
+              "desc": "单元格详情面板支持直接编辑值和设置 NULL"
+            },
+            {
+              "title": "列宽自适应",
+              "desc": "数据表格自动根据表头文字和数据内容调整最佳列宽"
+            },
+            {
+              "title": "复制为 INSERT",
+              "desc": "数据表格右键菜单新增\"复制为 INSERT 语句\"功能 (#166)"
+            },
+            {
+              "title": "创建/删除数据库和 Schema",
+              "desc": "侧栏右键菜单支持创建和删除数据库及 Schema"
+            },
+            {
+              "title": "SQL Server CROSS APPLY 补全",
+              "desc": "SQL 编辑器支持 CROSS APPLY / OUTER APPLY 语法补全 (#168)"
+            },
+            {
+              "title": "OceanBase Oracle 模式",
+              "desc": "自动检测 OceanBase Oracle 模式，使用 Oracle 风格的 Schema 查询 (#155)"
+            },
+            {
+              "title": "鼠标中键关闭标签",
+              "desc": "支持鼠标中键点击关闭标签页 (#162)"
+            },
+            {
+              "title": "排序提示图标",
+              "desc": "鼠标悬停列标题时显示可排序提示图标"
+            },
+            {
+              "title": "窗口状态记忆",
+              "desc": "窗口位置和大小在关闭后自动保存，重新打开时恢复"
+            },
+            {
+              "title": "MCP 连接管理",
+              "desc": "MCP 工具新增 `dbx_add_connection` 和 `dbx_remove_connection`，操作后自动通知桌面端刷新"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "DataGrid 工具栏增强",
+              "desc": "数据表格工具栏和数据集交互优化 (contributed by @rarnu)"
+            },
+            {
+              "title": "JSON/JSONB 渲染性能",
+              "desc": "预序列化 JSON/JSONB 值并截断单元格显示，大幅提升大数据量渲染性能"
+            },
+            {
+              "title": "信息栏合并",
+              "desc": "数据表底部信息栏和事务工具栏合并为一行，节省屏幕空间"
+            },
+            {
+              "title": "标签页样式优化",
+              "desc": "标签模式切换改用图标，标签标题改为 Navicat 风格"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "标签页右键菜单",
+              "desc": "修复关闭所有/关闭其他/关闭右侧等标签页右键菜单不可用的问题"
+            },
+            {
+              "title": "查询结果表头和排序",
+              "desc": "修复查询结果表头提示和全量排序问题 (contributed by @Bacon2994)"
+            },
+            {
+              "title": "MCP 连接配置",
+              "desc": "修复 MCP 写入的 config_json 与 Rust ConnectionConfig 结构不匹配的问题，改为从 SQLite 读取连接"
+            },
+            {
+              "title": "Tailwind 样式丢失",
+              "desc": "修复 tmpfs 环境下 Tailwind 样式缺失的问题 (#167)"
+            },
+            {
+              "title": "数据表格滚动抖动",
+              "desc": "禁用数据表格过度滚动回弹，防止表头和数据错位 (#156)"
+            },
+            {
+              "title": "GaussDB Schema 列表",
+              "desc": "移除 GaussDB list_schemas 的 EXISTS 过滤以保持一致性 (#154)"
+            },
+            {
+              "title": "侧栏数据库过滤",
+              "desc": "连接配置指定数据库时，侧栏只显示该数据库 (#160)"
+            },
+            {
+              "title": "Oracle 11g 兼容性",
+              "desc": "修复 Oracle 11g 连接兼容性问题和侧栏改进"
+            },
+            {
+              "title": "MySQL 全 NULL 显示",
+              "desc": "增加 MySQL 类型回退，防止缺少类型映射时所有列值显示为 NULL (#40)"
+            },
+            {
+              "title": "AI 执行 SQL",
+              "desc": "修复 AI 执行时传递过期 SQL 状态的问题 (#153)"
+            },
+            {
+              "title": "JSONB 编辑显示",
+              "desc": "修复 JSONB 值在编辑模式和详情面板中未正确显示为 JSON 字符串的问题 (#152)"
+            },
+            {
+              "title": "MongoDB 副本集 SSH",
+              "desc": "修复 MongoDB 副本集通过 SSH 隧道连接失败的问题 (#151)"
+            },
+            {
+              "title": "Redis 二进制误判",
+              "desc": "修复反斜杠字符串被误判为二进制数据的问题 (contributed by @Bacon2994)"
+            },
+            {
+              "title": "Toast 通知层级",
+              "desc": "修复 Toast 通知被对话框遮挡的问题"
+            },
+            {
+              "title": "DDL 面板文本选择",
+              "desc": "修复 DDL 面板无法选中文本的问题"
+            },
+            {
+              "title": "原生右键菜单",
+              "desc": "禁用浏览器原生右键菜单，新增侧栏刷新按钮 (#159)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.4.3",
+      "name": "DBX v0.4.3",
+      "date": "2026-05-07",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "结果集数据编辑",
+              "desc": "当查询为单表且包含主键时，可以在查询结果集中双击单元格直接修改数据，修改以事务形式提交或回滚 (contributed by @rarnu)"
+            },
+            {
+              "title": "设置默认数据库",
+              "desc": "支持在数据库树和顶部选择区域设置/取消默认数据库，新建查询时优先使用默认数据库 (contributed by @Bacon2994)"
+            },
+            {
+              "title": "Elasticsearch REST 查询",
+              "desc": "SQL 编辑器支持对 Elasticsearch 执行 REST 风格查询"
+            },
+            {
+              "title": "SQL 编辑器 Ctrl+点击",
+              "desc": "在 SQL 编辑器中按住 Ctrl（Mac 为 Cmd）点击表名查看建表 DDL，点击列名查看列信息 (contributed by @rarnu)"
+            },
+            {
+              "title": "达梦数据库支持",
+              "desc": "新增 DM（达梦）数据库 ODBC 连接支持"
+            },
+            {
+              "title": "GaussDB 原生驱动",
+              "desc": "GaussDB/openGauss 从 ODBC 切换为原生 Rust 驱动，连接更稳定、无需额外安装 ODBC 驱动"
+            },
+            {
+              "title": "侧栏表管理菜单",
+              "desc": "侧栏表/视图右键菜单新增截断、删除、复制名称等管理操作"
+            },
+            {
+              "title": "数据迁移 Upsert 模式",
+              "desc": "数据迁移支持 Upsert 模式，遇到主键冲突时自动更新而非报错"
+            },
+            {
+              "title": "侧栏模糊搜索",
+              "desc": "表和 Schema 筛选支持模糊搜索"
+            },
+            {
+              "title": "AI 助手 Markdown 渲染",
+              "desc": "AI 助手回复内容支持 Markdown 格式渲染"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "BigInt 精度保持",
+              "desc": "超出 JavaScript 安全整数范围的 BigInt 值不再丢失精度"
+            },
+            {
+              "title": "更新体验优化",
+              "desc": "更新对话框在下载和安装期间锁定，release notes 以 Markdown 格式渲染"
+            },
+            {
+              "title": "事务执行可靠性",
+              "desc": "修复事务内多条语句可能在不同连接上执行的问题，BEGIN 失败时直接报错而非静默降级"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "macOS 应用无法打开",
+              "desc": "修复 macOS 版本安装后无法启动的问题，正确打包 ODBC 动态库"
+            },
+            {
+              "title": "PostgreSQL 补全异常",
+              "desc": "修复 PostgreSQL 自动补全失败后导致所有后续补全都不可用的问题"
+            },
+            {
+              "title": "SQL Server Unicode",
+              "desc": "修复 SQL Server i16 列元数据处理和 Unicode 字符串缺少 N'' 前缀的问题"
+            },
+            {
+              "title": "分页排序丢失",
+              "desc": "修复翻页后排序顺序被重置的问题"
+            },
+            {
+              "title": "CSV 导出中文",
+              "desc": "CSV 导出添加 UTF-8 BOM，修复 Excel 打开中文乱码"
+            },
+            {
+              "title": "查询错误提示",
+              "desc": "查询错误改为弹窗提示，不再作为表格行显示"
+            },
+            {
+              "title": "Oracle 连接修复",
+              "desc": "修复 Oracle bit vector buffer 溢出问题"
+            },
+            {
+              "title": "GaussDB 连接迁移",
+              "desc": "旧版 GaussDB/openGauss 连接自动迁移到原生驱动"
+            },
+            {
+              "title": "Oracle/达梦 Schema 过滤",
+              "desc": "过滤 Oracle 和达梦的系统 Schema，侧栏只显示用户 Schema"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.4.2",
+      "name": "v0.4.2",
+      "date": "2026-05-06",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "查询 Schema 上下文",
+              "desc": "执行查询前自动设置 schema 上下文（如 PostgreSQL 的 search_path），确保查询在正确的 schema 下运行 (closes #113)"
+            },
+            {
+              "title": "Oracle SYSDBA 认证",
+              "desc": "支持以 SYSDBA 身份连接 Oracle 数据库"
+            },
+            {
+              "title": "MongoDB 表单 URL 参数",
+              "desc": "MongoDB 连接支持在表单模式下自定义 URL 参数（如 `authSource=admin`），方便连接需要特殊认证配置的实例 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "列类型提示优化",
+              "desc": "数据网格列标题悬停时显示列类型和注释的 tooltip，替代原来的行内显示，界面更简洁"
+            },
+            {
+              "title": "连接文件选择器",
+              "desc": "SQLite/DuckDB 连接新增文件选择器按钮，可直接浏览选择数据库文件 (closes #121)"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "PostgreSQL SMALLINT 显示",
+              "desc": "修复 SMALLINT/INT2 类型值显示为 null 的问题 (closes #118)"
+            },
+            {
+              "title": "MySQL TINYINT(1) 显示",
+              "desc": "修复 TINYINT(1) 被错误显示为布尔值的问题 (closes #120)"
+            },
+            {
+              "title": "PostgreSQL 自定义类型",
+              "desc": "修复 PostgreSQL 自定义扩展类型的值显示为 null 的问题"
+            },
+            {
+              "title": "JSONB 值显示",
+              "desc": "修复 JSONB 类型值显示为 `[object Object]` 的问题，现在正确显示为 JSON 字符串"
+            },
+            {
+              "title": "UUID 类型识别",
+              "desc": "改进 UUID 类型字段的识别方式 (contributed by @rarnu)"
+            },
+            {
+              "title": "PostgreSQL 大小写敏感表名",
+              "desc": "修复包含大写字母的表名查询失败的问题，使用 quote_ident 正确引用 (closes #111)"
+            },
+            {
+              "title": "SQL 自动补全",
+              "desc": "补充 ASC/DESC 关键字到 SQL 自动补全列表"
+            },
+            {
+              "title": "Oracle 自动重连",
+              "desc": "修复 Oracle 连接断开后无法自动重连的问题"
+            },
+            {
+              "title": "应用更新权限",
+              "desc": "修复应用内更新下载失败（ACL 权限缺失）的问题"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.4.1",
+      "name": "v0.4.1",
+      "date": "2026-05-05",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "Web 端部署",
+              "desc": "支持通过 Docker 或 axum 后端部署 Web 版本，浏览器即可访问数据库管理界面，支持密码认证和 SQLite 持久化存储"
+            },
+            {
+              "title": "SQL 文件保存与打开",
+              "desc": "查询编辑器工具栏新增保存/打开按钮，可将 SQL 导出为 .sql 文件或从文件导入 SQL (closes #93)"
+            },
+            {
+              "title": "AI 编程助手集成",
+              "desc": "支持 AI 辅助 SQL 编写，可自动修复查询错误"
+            },
+            {
+              "title": "SQL 脚本执行",
+              "desc": "支持导入并执行 .sql 脚本文件"
+            },
+            {
+              "title": "文件路径验证",
+              "desc": "SQLite、DuckDB、PostgreSQL SSL 证书和 SSH Key 路径连接前预校验，不存在的文件立即报错而非静默失败 (closes #88, contributed by @Mukesh-234234)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "查询标签页桌面端持久化",
+              "desc": "桌面端重启后自动恢复所有打开的查询标签页，SQL 内容不再丢失"
+            },
+            {
+              "title": "版本号快速加载",
+              "desc": "Web 端版本号改为本地接口获取，不再依赖 GitHub 网络请求"
+            },
+            {
+              "title": "连接超时优化",
+              "desc": "失败连接的超时时间缩短，减少等待"
+            },
+            {
+              "title": "代码格式化规范",
+              "desc": "集成 oxfmt + cargo fmt + husky pre-commit hook，CI 自动检查前后端代码格式"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.4.0",
+      "name": "v0.4.0",
+      "date": "2026-05-04",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "连接分组与拖拽排序",
+              "desc": "侧边栏支持创建分组文件夹来组织连接，连接和分组均可拖拽排序，支持右键「移至分组」，分组数据独立持久化并可随连接导入导出 (closes #72)"
+            },
+            {
+              "title": "数据库全局搜索",
+              "desc": "在数据库/Schema 上右键可全局搜索，输入关键词（用户 ID、邮箱、订单号等）扫描所有表查找匹配行，支持进度显示、逐表错误隔离和结果跳转 (contributed by @SuLea-IT, closes #76)"
+            },
+            {
+              "title": "新建连接对话框重构",
+              "desc": "数据库类型选择改为两步式流程，提供图标/列表双视图和搜索，SSH 配置独立为标签页 (contributed by @wu-clan)"
+            },
+            {
+              "title": "标签页滚动按钮",
+              "desc": "标签页过多时两侧出现带渐变遮罩的箭头按钮，切换标签自动滚动到可视区域 (contributed by @yavon007)"
+            },
+            {
+              "title": "应用内自动更新",
+              "desc": "检测到新版本时可直接在应用内下载并安装，无需手动下载"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "连接选择器增强",
+              "desc": "查询编辑器的连接下拉菜单显示数据库类型图标和连接地址副标题，方便区分同名连接 (contributed by @SuLea-IT, closes #74, closes #75)"
+            },
+            {
+              "title": "标签页体验",
+              "desc": "活跃/非活跃标签页视觉区分更清晰，Pin 按钮不再引起宽度跳动"
+            },
+            {
+              "title": "macOS 代码签名",
+              "desc": "Release 构建自动签名并提交苹果公证，安装后不再弹出安全警告"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.10",
+      "name": "v0.3.10",
+      "date": "2026-05-04",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "多语句执行",
+              "desc": "在查询编辑器中一次执行多条 SQL 语句（用分号分隔），每条语句的结果以「结果 1」「结果 2」子标签独立展示，点击切换"
+            },
+            {
+              "title": "侧边栏类型筛选",
+              "desc": "搜索框旁新增类型筛选按钮，可按数据库类型（MySQL、PostgreSQL 等）快速过滤连接列表，支持多选"
+            },
+            {
+              "title": "索引编辑器增强",
+              "desc": "索引元数据支持类型、包含列、过滤条件和注释；编辑器新增下拉多选列、可调列宽和搜索功能 (contributed by @yavon007)"
+            },
+            {
+              "title": "SQLite UNC 路径连接",
+              "desc": "支持通过 `\\\\wsl.localhost\\...` 等 UNC 网络路径连接 WSL 和 SMB 上的 SQLite 文件 (contributed by @Mukesh-234234, closes #67)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "列类型精度",
+              "desc": "改进 PostgreSQL、MySQL、SQL Server、Oracle 的列类型显示精度（如 `varchar(max)`、`decimal(p,s)`、`datetime2(p)`） (contributed by @yavon007)"
+            },
+            {
+              "title": "Tab 信息提示",
+              "desc": "鼠标悬停查询标签页时显示连接、数据库、表名等详细信息"
+            },
+            {
+              "title": "输入框体验",
+              "desc": "修复 Safari/WebKit 引擎自动首字母大写和拼写检查的问题"
+            },
+            {
+              "title": "侧边栏防误选",
+              "desc": "侧边栏内容不再可被意外选中"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.9",
+      "name": "v0.3.9",
+      "date": "2026-05-03",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "MCP Server",
+              "desc": "新增 MCP Server（[@dbx-app/mcp-server](https://www.npmjs.com/package/@dbx-app/mcp-server)），让 Claude Code、Cursor 等 AI 编程助手直接使用 DBX 中已配置的数据库连接查询数据，支持列出连接、浏览表、执行 SQL"
+            },
+            {
+              "title": "MCP UI 联动",
+              "desc": "AI 助手可通过 MCP 直接在 DBX 桌面端打开表或执行 SQL 并展示结果，DBX 窗口自动置前"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "MCP 查询结果格式化",
+              "desc": "MCP 工具返回 Markdown 表格而非 JSON，更易读且节省 token"
+            },
+            {
+              "title": "MCP 连接池",
+              "desc": "MCP Server 跨查询复用数据库连接，5 分钟空闲自动关闭"
+            },
+            {
+              "title": "MCP 安全加固",
+              "desc": "元数据查询使用参数化防注入，30 秒查询超时，连接断开自动重试"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.8",
+      "name": "v0.3.8",
+      "date": "2026-05-03",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "字段血缘查看器",
+              "desc": "右键列节点选择\"查看字段血缘\"，展示外键关系、视图引用、历史 SQL 引用和同名字段，支持搜索、置信度筛选和一键跳转到关联表 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "SSH 密钥密码",
+              "desc": "连接对话框新增密钥密码输入框，支持加密的 SSH 私钥；密钥路径旁新增文件浏览按钮 (contributed by @yavon007)"
+            },
+            {
+              "title": "数据网格搜索自动补全",
+              "desc": "搜索栏输入 `w`/`wh` 时提示 `WHERE` 关键字，输入 WHERE 后自动补全当前表的列名，支持引号和括号自动配对 (contributed by @yavon007)"
+            },
+            {
+              "title": "配置加密导出/导入",
+              "desc": "导出连接配置时可设置密码短语加密保护（含密码），在另一台电脑导入时输入密码短语即可恢复全部连接 (closes #66)"
+            },
+            {
+              "title": "达梦数据库支持",
+              "desc": "新增 DM (Dameng) 数据库连接选项，通过 PG 兼容模式连接，需在达梦侧设置 COMPATIBLE_MODE=7"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "SQL 编辑器补全增强",
+              "desc": "JOIN 和逗号分隔的 FROM 子句中也能自动补全表名"
+            },
+            {
+              "title": "Schema Diff 同步执行",
+              "desc": "后端使用 SQL 语句分割器执行同步脚本，不再因函数体、触发器中的分号而误切割 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "连接对话框滚动",
+              "desc": "窗口较小时表单区域可内部滚动，标题和按钮始终可见 (contributed by @yavon007)"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "数据传输错误处理",
+              "desc": "表传输出错时对话框正确进入失败状态，不再卡在\"传输中\" (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "SQL Server 分页",
+              "desc": "修复 SQL Server 翻页始终显示第一页的问题，改用 OFFSET...FETCH NEXT 分页 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "SQL Server 行内编辑",
+              "desc": "修复 SQL Server schema 限定表名和括号转义的问题 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "查询历史确认",
+              "desc": "删除和清空查询历史前增加确认提示 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "Markdown 导出",
+              "desc": "修复单元格包含管道符或换行时导出的表格错乱问题 (contributed by @SuLea-IT)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.7",
+      "name": "DBX v0.3.7",
+      "date": "2026-05-02",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "表数据导入",
+              "desc": "右键表节点选择\"导入数据\"，支持 CSV、TSV、JSON、Excel 文件导入，自动映射列名，支持追加或清空后导入模式 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "表结构编辑器",
+              "desc": "右键表节点选择\"编辑表结构\"，可视化编辑列和索引，带 SQL 预览，支持 MySQL、PostgreSQL、SQLite、SQL Server (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "执行计划查看器",
+              "desc": "工具栏新增 Explain 按钮，MySQL 和 PostgreSQL 的执行计划以树形图、摘要表格和原始 JSON 三种视图展示 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "AI 推理过程展示",
+              "desc": "使用 DeepSeek-R1 等推理模型时，思考过程以可折叠区域单独展示，不再与正式回答混在一起"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "Doris/StarRocks 连接兼容",
+              "desc": "修复 driver_profile 识别和查询协议兼容问题，支持通过 MySQL 协议正常连接 Doris、StarRocks、SelectDB、TDengine"
+            },
+            {
+              "title": "前端代码分割",
+              "desc": "Dialog 组件改为懒加载，CodeMirror 和 sql-formatter 拆分为独立 chunk，减少首屏加载体积"
+            },
+            {
+              "title": "Linux 兼容性",
+              "desc": "Release 构建环境从 Ubuntu 24.04 降至 22.04，支持 glibc 2.35+（Ubuntu 22.04 LTS 起）(closes #63)"
+            },
+            {
+              "title": "构建优化",
+              "desc": "Release profile 启用 `panic=abort`，CI 缓存按 target 隔离并与 release 共享"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "AI API 选项边框",
+              "desc": "修复大模型配置中 API 选项选中状态不明显的问题 (contributed by @rarnu)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.6",
+      "name": "v0.3.6",
+      "date": "2026-05-02",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "数据库关系图",
+              "desc": "右键数据库/表节点选择\"查看关系图\"，支持表结构图和 Chen 风格工程 ER 图，支持缩放/拖拽和 SVG 导出 (contributed by @SuLea-IT)"
+            },
+            {
+              "title": "SQL 编辑器设置",
+              "desc": "新增设置页面，可自定义字体、字号和 CodeMirror 主题，带实时预览效果 (contributed by @rarnu)"
+            },
+            {
+              "title": "数据库导出",
+              "desc": "右键数据库节点导出 SQL 文件，包含表结构 DDL 和 INSERT 数据，每表最多 10,000 行，批量 INSERT 减小文件体积 (contributed by @SuLea-IT, closes #53)"
+            },
+            {
+              "title": "表数据 WHERE 过滤",
+              "desc": "搜索框中输入 `WHERE` 条件可直接过滤表数据，分页和排序保持一致 (contributed by @SuLea-IT, closes #51)"
+            },
+            {
+              "title": "行状态筛选器",
+              "desc": "编辑模式下新增状态筛选（全部/已变更/已编辑/新增/已删除），行号单元格以颜色标识变更状态 (contributed by @SuLea-IT)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "SQL/表标签标识",
+              "desc": "Tab 标签页新增模式图标和标签（SQL / Table），更容易区分"
+            },
+            {
+              "title": "表名补全优先级",
+              "desc": "在表上下文中，表名补全排在 SQL 关键词之前"
+            },
+            {
+              "title": "ClickHouse 认证",
+              "desc": "ClickHouse 连接支持用户名和密码"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "NUMERIC/DECIMAL 显示异常",
+              "desc": "修复 PostgreSQL/MySQL/SQL Server 中 NUMERIC/DECIMAL 类型显示为 NULL 或乱码的问题 (contributed by @kingcanfish)"
+            },
+            {
+              "title": "ClickHouse 连接失败",
+              "desc": "修复数据库名被错误拼入 URL 路径导致连接失败的问题"
+            },
+            {
+              "title": "Doris/StarRocks 连接失败",
+              "desc": "修复 sqlx 发送不支持的 SET 语句（PIPES_AS_CONCAT、timezone）导致连接报错的问题"
+            },
+            {
+              "title": "开发模式 Keychain 弹窗",
+              "desc": "开发模式下使用文件存储密码，避免 macOS 每次热更新都弹出 Keychain 密码框"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.5",
+      "name": "v0.3.5",
+      "date": "2026-05-02",
+      "sections": [
+        {
+          "type": "other",
+          "title": "AI Assistant Upgrade",
+          "items": [
+            {
+              "title": "Quick action buttons",
+              "desc": "6 action types (Generate, Explain, Optimize, Fix, Convert, Sample Data) exposed via dropdown selector"
+            },
+            {
+              "title": "Stream cancellation",
+              "desc": "Stop AI generation mid-stream with a stop button"
+            },
+            {
+              "title": "Richer schema context",
+              "desc": "Indexes and foreign keys included in AI context for better JOIN and optimization suggestions"
+            },
+            {
+              "title": "Action-specific prompts",
+              "desc": "Tailored system prompts per action type with bilingual support"
+            },
+            {
+              "title": "Fix with AI",
+              "desc": "One-click error fix button appears when query execution fails"
+            },
+            {
+              "title": "Conversation history",
+              "desc": "AI chat sessions auto-saved and restorable from history"
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "SQL File Execution (contributed by @SuLea-IT)",
+          "items": [
+            {
+              "title": "Execute `.sql` files with streaming statement splitting",
+              "desc": ""
+            },
+            {
+              "title": "Real-time progress events with cancel support",
+              "desc": ""
+            },
+            {
+              "title": "Handles quotes, comments, PostgreSQL dollar quoting",
+              "desc": ""
+            },
+            {
+              "title": "Continue-on-error option",
+              "desc": ""
+            },
+            {
+              "title": "Toolbar button and tree context menu integration",
+              "desc": ""
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "Security (contributed by @SuLea-IT)",
+          "items": [
+            {
+              "title": "Connection passwords stored in system keyring (macOS Keychain / Windows Credential Manager)",
+              "desc": ""
+            },
+            {
+              "title": "Auto-migration from plaintext JSON to secure storage",
+              "desc": ""
+            },
+            {
+              "title": "Keyring errors surfaced in UI",
+              "desc": ""
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "Other Improvements",
+          "items": [
+            {
+              "title": "Tab bar overflow handling — tabs compress then scroll horizontally",
+              "desc": ""
+            },
+            {
+              "title": "Code block parsing fix for AI responses",
+              "desc": ""
+            },
+            {
+              "title": "DuckDB keyword completion and highlighting",
+              "desc": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.4",
+      "name": "v0.3.4",
+      "date": "2026-05-01",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "数据库结构对比",
+              "desc": "右键数据库选择\"比较数据库\"，自动对比两个数据库的表结构差异（新增/删除/修改的表和列），生成同步 SQL（ALTER/CREATE/DROP），确认后一键执行 (closes #28)"
+            },
+            {
+              "title": "SSH 隧道局域网开放",
+              "desc": "SSH 隧道设置中新增\"允许局域网访问隧道\"选项，其他程序可共享隧道连接"
+            },
+            {
+              "title": "SQL 关键字补全增强",
+              "desc": "补全列表扩展到 80+ 关键字，涵盖窗口函数、DuckDB 特有语法（PIVOT/QUALIFY/EXCLUDE/READ_CSV 等）"
+            },
+            {
+              "title": "SQL 语法高亮增强",
+              "desc": "编辑器高亮支持 DuckDB、窗口函数等高级 SQL 关键字"
+            },
+            {
+              "title": "AI Prompt 双语",
+              "desc": "AI 助手根据应用语言自动切换中英文 Prompt，上下文表数量上限从 12 提升到 50"
+            },
+            {
+              "title": "AI 连接测试",
+              "desc": "AI 设置面板新增\"测试\"按钮，保存前验证配置"
+            },
+            {
+              "title": "AI Endpoint 自动补全",
+              "desc": "只需填 base URL（如 /v1），根据 API 格式自动补全路径"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "AI 空消息气泡修复",
+              "desc": "等待响应时不再显示空白矩形框"
+            },
+            {
+              "title": "AI 输入框禁用",
+              "desc": "未选择数据库时自动禁用"
+            },
+            {
+              "title": "输入框自动大写关闭",
+              "desc": "全局禁用 macOS 自动首字母大写"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "Doris/StarRocks 连接",
+              "desc": "修复 sqlx 默认发送 SET NAMES/sql_mode 导致的 \"non-constant expr\" 错误，使用 connect_bare 禁用初始化语句"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.3",
+      "name": "v0.3.3",
+      "date": "2026-05-01",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "数据行转置查看",
+              "desc": "右键行选择\"转置查看\"，在侧面板中竖向展示每列的值，支持上下行切换，点击其他行自动同步 (closes #27)"
+            },
+            {
+              "title": "AI Responses API 支持",
+              "desc": "AI 设置中可选择 /chat/completions 或 /responses 两种 API 格式，兼容更多第三方服务 (closes #45)"
+            },
+            {
+              "title": "AI 连接测试",
+              "desc": "AI 设置面板新增\"测试\"按钮，保存前验证 API 配置是否正确"
+            },
+            {
+              "title": "AI Endpoint 自动补全",
+              "desc": "只需填写 base URL（如 /v1），系统根据选择的 API 格式自动补全完整路径"
+            },
+            {
+              "title": "SelectDB 支持",
+              "desc": "新增 SelectDB 连接选项，兼容 Doris/MySQL 协议"
+            },
+            {
+              "title": "CockroachDB / TDengine 支持",
+              "desc": "新增数据库类型选项"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "AI 空消息气泡修复",
+              "desc": "等待 AI 响应时不再显示空白矩形框"
+            },
+            {
+              "title": "AI 输入框禁用",
+              "desc": "未选择数据库时输入框和发送按钮自动禁用"
+            },
+            {
+              "title": "输入框自动大写关闭",
+              "desc": "全局 Input 组件禁用 macOS 自动首字母大写"
+            },
+            {
+              "title": "SVG 图标压缩",
+              "desc": "全部数据库图标经 svgo 无损压缩"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "Scoop 卸载器路径",
+              "desc": "修复 Windows Scoop 更新时 \"Uninstall dbx.exe is missing\" 错误"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.2",
+      "name": "v0.3.2",
+      "date": "2026-05-01",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "表级数据导出",
+              "desc": "右键表节点导出为 CSV、JSON 或 SQL INSERT 文件"
+            },
+            {
+              "title": "表结构导出",
+              "desc": "右键表节点导出 CREATE TABLE DDL 为 .sql 文件"
+            },
+            {
+              "title": "矩形选区",
+              "desc": "在数据表格中拖拽选择矩形区域，支持复制为 TSV/CSV/JSON/SQL IN 列表 (#44 @SuLea-IT)"
+            },
+            {
+              "title": "单元格详情面板",
+              "desc": "悬停单元格查看列元数据、值长度、格式化 JSON 等详情 (#44 @SuLea-IT)"
+            },
+            {
+              "title": "新增数据库支持",
+              "desc": "Doris、StarRocks、Redshift、CockroachDB、TDengine (closes #42)"
+            },
+            {
+              "title": "编辑器主题",
+              "desc": "使用 GitHub Light/Dark 主题，跟随应用亮暗模式自动切换"
+            },
+            {
+              "title": "数据传输工具栏按钮",
+              "desc": "顶部工具栏新增数据传输入口，按钮带文字标签"
+            },
+            {
+              "title": "IPv6 支持",
+              "desc": "数据库连接地址支持 IPv6 格式"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "面板拖拽调整",
+              "desc": "侧边栏、AI 面板、查询历史面板均支持拖拽调整宽度，蓝色高亮拖拽线"
+            },
+            {
+              "title": "分页加载指示器",
+              "desc": "翻页时分页栏显示 loading 状态"
+            },
+            {
+              "title": "连接失败提示",
+              "desc": "点击连接失败时弹出 toast 错误提示，不再静默失败"
+            },
+            {
+              "title": "面板标题栏对齐",
+              "desc": "所有面板标题栏统一为 h-9 高度"
+            },
+            {
+              "title": "数据库类型三列选择器",
+              "desc": "连接对话框类型选择器改为三列布局（主流 / MySQL 兼容 / PostgreSQL 兼容）"
+            },
+            {
+              "title": "欢迎页版本号",
+              "desc": "首页底部显示应用版本号"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "PostgreSQL 时间字段显示为 null",
+              "desc": "正确序列化 timestamptz/timestamp/date/time 类型 (closes #40)"
+            },
+            {
+              "title": "SSH 隧道密码认证",
+              "desc": "使用 russh 纯 Rust SSH 库替代 sshpass 外部依赖，密码认证不再需要安装额外工具 (closes #43)"
+            },
+            {
+              "title": "Doris 连接报错",
+              "desc": "修复 Doris/StarRocks 连接时 \"Set statement does not support non-constant expr\" 错误"
+            },
+            {
+              "title": "AI 面板切换导致侧边栏宽度变化",
+              "desc": "面板改为像素宽度，独立于 Splitpanes"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.1",
+      "name": "v0.3.1",
+      "date": "2026-04-30",
+      "sections": [
+        {
+          "type": "other",
+          "title": "Features",
+          "items": [
+            {
+              "title": "Table data export",
+              "desc": "Right-click a table to export data as CSV, JSON, or SQL INSERT statements"
+            },
+            {
+              "title": "Table structure export",
+              "desc": "Right-click a table to export CREATE TABLE DDL as .sql file"
+            },
+            {
+              "title": "Resizable panels",
+              "desc": "Sidebar, AI panel, and history panel now support drag-to-resize with pixel-based widths"
+            },
+            {
+              "title": "Data transfer toolbar button",
+              "desc": "Quick access to data transfer from the top toolbar with text labels"
+            },
+            {
+              "title": "Version display",
+              "desc": "App version shown on the welcome page"
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "Bug Fixes",
+          "items": [
+            {
+              "title": "PostgreSQL temporal types",
+              "desc": "Fixed timestamp/date/time columns displaying as NULL (fixes #40)"
+            },
+            {
+              "title": "Panel resize stability",
+              "desc": "Toggling the AI sidebar no longer causes the left sidebar to resize unexpectedly"
+            },
+            {
+              "title": "Query history header",
+              "desc": "Fixed header height inconsistency with other panels"
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "UI Improvements",
+          "items": [
+            {
+              "title": "Toolbar buttons now show text labels alongside icons",
+              "desc": ""
+            },
+            {
+              "title": "Consistent blue resize handle styling across all panels",
+              "desc": ""
+            },
+            {
+              "title": "Context menu sub-menu rendering fix (portal wrapping)",
+              "desc": ""
+            },
+            {
+              "title": "Unified context menu text sizing",
+              "desc": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.3.0",
+      "name": "DBX v0.3.0",
+      "date": "2026-04-30",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "AI 助手全新设计",
+              "desc": "重新设计为右侧聊天面板，支持流式数据处理和通过 AI 执行 SQL，自动识别用户意图（移除手动选择操作类型）"
+            },
+            {
+              "title": "Elasticsearch 支持",
+              "desc": "新增 Elasticsearch 数据库支持，内置文档浏览器 (#38)"
+            },
+            {
+              "title": "SQL 编辑器自动补全",
+              "desc": "编写 SQL 时自动提示表名、列名等 (#33)"
+            },
+            {
+              "title": "文件拖拽预览",
+              "desc": "支持拖拽 Parquet、CSV、TSV、JSON 文件到编辑器直接预览 (#35)"
+            },
+            {
+              "title": "列注释展示",
+              "desc": "在侧边栏和数据表格表头显示列注释信息 (#37)"
+            },
+            {
+              "title": "MongoDB URL 连接",
+              "desc": "MongoDB 支持直接使用 URL 连接字符串 (#32)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "编辑器工具栏",
+              "desc": "执行和格式化按钮移至编辑器工具栏"
+            },
+            {
+              "title": "本地数据库图标",
+              "desc": "使用本地数据库图标资产，提升加载速度"
+            },
+            {
+              "title": "排除临时 Schema",
+              "desc": "查询 schema 列表时自动排除临时 schema (#39)"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "修复 SQL 执行快捷键不稳定的问题 (#29)",
+              "desc": ""
+            },
+            {
+              "title": "修复表数据加载时未及时显示加载状态的问题 (#34)",
+              "desc": ""
+            },
+            {
+              "title": "修复无颜色连接在欢迎页和标签栏显示异常的问题",
+              "desc": ""
+            },
+            {
+              "title": "修复 CI 流程中 Release 工作流时序问题 (#31)",
+              "desc": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.2.1",
+      "name": "DBX v0.2.1",
+      "date": "2026-04-30",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "标签页置顶与树节点置顶",
+              "desc": "常用的数据库、表可以固定在侧边栏顶部 (#17 @SuLea-IT)"
+            },
+            {
+              "title": "SQL 格式化",
+              "desc": "一键美化 SQL 查询语句 (#19 @SuLea-IT)"
+            },
+            {
+              "title": "选中 SQL 执行",
+              "desc": "选中部分 SQL 文本单独执行，无需运行整条语句 (#13 @SuLea-IT)"
+            },
+            {
+              "title": "标签页关闭菜单",
+              "desc": "右键标签支持关闭其他、关闭右侧等操作 (#24 @SuLea-IT)"
+            },
+            {
+              "title": "危险操作二次确认",
+              "desc": "DROP/DELETE/TRUNCATE 等危险操作增加确认弹窗 (#11 @serenez)"
+            },
+            {
+              "title": "新版本检查",
+              "desc": "自动检测新版本并提示更新 (#22, closes #18)"
+            },
+            {
+              "title": "SSH 隧道支持",
+              "desc": "通过 SSH 隧道安全连接远程数据库 (#22)"
+            }
+          ]
+        },
+        {
+          "type": "improved",
+          "title": "改进",
+          "items": [
+            {
+              "title": "连接保存体验优化",
+              "desc": "改善保存连接时的交互流程和反馈 (#23 @wds824)"
+            },
+            {
+              "title": "数据库编辑体验优化",
+              "desc": "改进数据编辑交互 (#10 @serenez)"
+            },
+            {
+              "title": "Redis/MongoDB 标签标识",
+              "desc": "标签页标题更清晰地区分 Redis 和 MongoDB (#12 @SuLea-IT)"
+            },
+            {
+              "title": "侧边栏搜索",
+              "desc": "支持搜索过滤数据库和表 (closes #8)"
+            },
+            {
+              "title": "连接颜色标识",
+              "desc": "支持为连接设置颜色标记 (closes #7)"
+            },
+            {
+              "title": "兼容驱动配置",
+              "desc": "支持 MariaDB、TiDB 等兼容驱动"
+            }
+          ]
+        },
+        {
+          "type": "fixed",
+          "title": "修复",
+          "items": [
+            {
+              "title": "MySQL 时间类型显示为 null",
+              "desc": "正确序列化 DATETIME 等时间类型 (#20 @Yikuanzz)"
+            },
+            {
+              "title": "Redis 空数据库不显示",
+              "desc": "修复没有 key 的 Redis 数据库不显示的问题 (#25, closes #15)"
+            },
+            {
+              "title": "连接凭据泄露",
+              "desc": "避免在导出和日志中泄露敏感信息 (#16 @wds824)"
+            },
+            {
+              "title": "SQL Server 兼容性",
+              "desc": "支持 TLS 降级、TOP 语法和 schema 浏览"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.2.0",
+      "name": "DBX v0.2.0",
+      "date": "2026-04-30",
+      "sections": [
+        {
+          "type": "added",
+          "title": "新功能",
+          "items": [
+            {
+              "title": "**Oracle 数据库支持** (#3) — 使用 `oracle-rs` 纯 Rust 驱动，支持 schema 浏览、表查询、数据编辑、DDL 查看（Oracle 12c+）",
+              "desc": ""
+            },
+            {
+              "title": "Redis SSL/TLS",
+              "desc": "连接对话框新增 SSL/TLS 开关，支持 `rediss://` 协议和 Redis 6+ ACL 用户名"
+            },
+            {
+              "title": "**SSH 隧道密码认证** (#4)",
+              "desc": ""
+            },
+            {
+              "title": "**表 DDL 展示** (#1) — 支持 MySQL、PostgreSQL、SQLite、DuckDB、ClickHouse、SQL Server、Oracle",
+              "desc": ""
+            },
+            {
+              "title": "批量 DML 执行",
+              "desc": "新增 `execute_batch` 命令，多条编辑一次提交"
+            },
+            {
+              "title": "连接 URL 编码",
+              "desc": "用户名/密码中的特殊字符（`@`、`#`、`/`）自动编码，修复 OceanBase 等场景"
+            },
+            {
+              "title": "Homebrew & Scoop 分发",
+              "desc": "release 发布后自动更新包管理器"
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "问题修复",
+          "items": [
+            {
+              "title": "修复数据库表 ID 列显示为 `true` 的问题 (#6)",
+              "desc": ""
+            },
+            {
+              "title": "修复 MySQL 大数值显示和编辑保存问题",
+              "desc": ""
+            },
+            {
+              "title": "修复 MySQL 连接缺少 SSL mode 参数的问题",
+              "desc": ""
+            },
+            {
+              "title": "修复编辑器面板渲染问题",
+              "desc": ""
+            },
+            {
+              "title": "修复标签页匹配不准确的问题",
+              "desc": ""
+            },
+            {
+              "title": "修复连接编辑后对话框未关闭的问题",
+              "desc": ""
+            },
+            {
+              "title": "改进 SQL 值转义（NULL、反斜杠、空字符串）",
+              "desc": ""
+            },
+            {
+              "title": "DML 失败后自动恢复连接",
+              "desc": ""
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "界面改进",
+          "items": [
+            {
+              "title": "全新数据库图标（MySQL、PostgreSQL、Redis、MongoDB、Oracle、SQL Server 等均有独立 SVG 图标）",
+              "desc": ""
+            },
+            {
+              "title": "国产数据库兼容选项（TiDB、OceanBase、GoldenDB、openGauss、GaussDB、KingBase、Vastbase）",
+              "desc": ""
+            },
+            {
+              "title": "DataGrid 列类型颜色标识、行号显示、SQL 复制、新增行自动滚动",
+              "desc": ""
+            },
+            {
+              "title": "数据库工作区仪表盘",
+              "desc": ""
+            },
+            {
+              "title": "连接删除确认对话框",
+              "desc": ""
+            },
+            {
+              "title": "AI 助手增强",
+              "desc": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.1.1",
+      "name": "DBX v0.1.1",
+      "date": "2026-04-29",
+      "sections": [
+        {
+          "type": "other",
+          "title": "Bug Fixes",
+          "items": [
+            {
+              "title": "MySQL 8.x compatibility",
+              "desc": "Fixed connection hanging when listing databases (VARBINARY type mismatch)"
+            },
+            {
+              "title": "Same table name across databases",
+              "desc": "Tables with identical names in different databases now open in separate tabs"
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "New Features",
+          "items": [
+            {
+              "title": "Domestic database support",
+              "desc": "Added TiDB, OceanBase, GoldenDB, MariaDB, openGauss, GaussDB, KingBase, Vastbase with auto-configured ports and credentials"
+            },
+            {
+              "title": "Database brand icons",
+              "desc": "Connection dialog and dashboard now show database-specific icons"
+            },
+            {
+              "title": "SSH password auth",
+              "desc": "SSH tunnel now supports both key and password authentication"
+            },
+            {
+              "title": "File drag & drop",
+              "desc": "Drag .db/.sqlite/.duckdb files into the window to open directly"
+            },
+            {
+              "title": "Global toast notifications",
+              "desc": "Copy feedback and other actions via toast"
+            },
+            {
+              "title": "Connection status indicator",
+              "desc": "Green dot for connected databases, disconnect via right-click menu"
+            },
+            {
+              "title": "Delete confirmation",
+              "desc": "Connection deletion now requires confirmation"
+            }
+          ]
+        },
+        {
+          "type": "other",
+          "title": "Improvements",
+          "items": [
+            {
+              "title": "Column type display",
+              "desc": "Header shows column types with color-coded badges (#varchar, #int, etc.)"
+            },
+            {
+              "title": "Row numbers & zebra stripes",
+              "desc": "Data grid now shows row numbers and alternating row colors"
+            },
+            {
+              "title": "SQL tooltip & copy",
+              "desc": "Hover bottom SQL to see full query, click to copy"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "v0.1.0",
+      "name": "DBX v0.1.0",
+      "date": "2026-04-29",
+      "sections": []
+    }
+  ]
+}
