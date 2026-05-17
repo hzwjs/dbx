@@ -674,6 +674,8 @@ export default {
     nullable: "Admite nulos",
     defaultValue: "Valor por defecto",
     comment: "Comentario",
+    editComment: "Editar comentario",
+    commentPlaceholder: "Ingresar comentario de columna...",
     actions: "Acciones",
     indexName: "Índice",
     indexColumns: "Columnas",

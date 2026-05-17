@@ -14,6 +14,7 @@ import {
   Database,
   KeyRound,
   Loader2,
+  Maximize2,
   Plus,
   RefreshCw,
   Save,
@@ -27,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
@@ -409,7 +411,43 @@ watch(open, (value) => {
                         />
                       </td>
                       <td class="border-b border-r px-2 py-1.5">
-                        <Input v-model="column.comment" class="h-7 min-w-32 text-xs" :disabled="column.markedForDrop" />
+                        <div class="flex min-w-44 items-center gap-1">
+                          <Input
+                            v-model="column.comment"
+                            class="h-7 min-w-0 flex-1 text-xs"
+                            :disabled="column.markedForDrop"
+                          />
+                          <Popover>
+                            <PopoverTrigger as-child>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-7 w-7 shrink-0"
+                                :disabled="column.markedForDrop"
+                                :aria-label="t('structureEditor.editComment')"
+                                :title="t('structureEditor.editComment')"
+                              >
+                                <Maximize2 class="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" class="w-[420px] p-2.5">
+                              <div class="mb-2 flex items-center justify-between gap-2">
+                                <span class="min-w-0 truncate text-xs font-medium">
+                                  {{ t("structureEditor.editComment") }}
+                                </span>
+                                <span class="max-w-44 truncate font-mono text-[11px] text-muted-foreground">
+                                  {{ column.name || t("structureEditor.columnName") }}
+                                </span>
+                              </div>
+                              <textarea
+                                v-model="column.comment"
+                                class="min-h-36 w-full resize-y rounded-md border bg-background px-2.5 py-2 text-xs leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                :placeholder="t('structureEditor.commentPlaceholder')"
+                                :disabled="column.markedForDrop"
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </td>
                       <td class="border-b px-2 py-1.5">
                         <Button

@@ -761,6 +761,8 @@ export default {
     nullable: "Nullable",
     defaultValue: "Default",
     comment: "Comment",
+    editComment: "Edit comment",
+    commentPlaceholder: "Enter column comment...",
     actions: "Actions",
     indexName: "Index",
     indexColumns: "Columns",
