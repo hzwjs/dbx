@@ -20,8 +20,8 @@
     "check": "oxfmt --check \"src/**/*.{ts,vue}\" && pnpm lint && vue-tsc --noEmit && pnpm test",
     "lint": "oxlint --vue-plugin src",
     "fmt": "oxfmt \"src/**/*.{ts,vue}\"",
-    "test": "tsx --test tests/*.test.ts",
-    "test:coverage": "c8 --reporter=lcov --reporter=text tsx --test tests/*.test.ts",
+    "test": "tsx --test packages/app-tests/*.test.ts",
+    "test:coverage": "c8 --reporter=lcov --reporter=text tsx --test packages/app-tests/*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "prepare": "husky"

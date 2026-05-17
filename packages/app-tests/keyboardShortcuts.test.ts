@@ -1,0 +1,117 @@
+import { strict as assert } from "node:assert";
+import test from "node:test";
+import {
+  eventToShortcut,
+  isCancelSearchShortcut,
+  isCloseTabShortcut,
+  isExecuteSqlShortcut,
+  isFocusSearchShortcut,
+  isObjectSourceSaveShortcutTarget,
+  isSaveShortcut,
+} from "../../src/lib/keyboardShortcuts.ts";
+import { shortcutToCodeMirrorKey } from "../../src/lib/shortcutRegistry.ts";
+
+test("matches Cmd+Enter for SQL execution", () => {
+  assert.equal(isExecuteSqlShortcut({ key: "Enter", metaKey: true }), true);
+});
+
+test("matches custom shortcut settings for SQL execution", () => {
+  assert.equal(
+    isExecuteSqlShortcut({ key: "Enter", metaKey: true }, { executeSql: "Shift+Mod+Enter" } as any),
+    false,
+  );
+  assert.equal(
+    isExecuteSqlShortcut({ key: "Enter", metaKey: true, shiftKey: true } as any, {
+      executeSql: "Shift+Mod+Enter",
+    } as any),
+    true,
+  );
+});
+
+test("records custom shortcuts from keydown events", () => {
+  assert.equal(eventToShortcut({ key: "r", metaKey: true, shiftKey: true } as any), "Shift+Mod+R");
+  assert.equal(eventToShortcut({ key: "F2" } as any), "F2");
+  assert.equal(eventToShortcut({ key: "Control", ctrlKey: true } as any), null);
+});
+
+test("converts custom shortcuts to CodeMirror key names", () => {
+  assert.equal(shortcutToCodeMirrorKey("Shift+Mod+R"), "Shift-Mod-r");
+  assert.equal(shortcutToCodeMirrorKey("Mod+/"), "Mod-/");
+});
+
+test("matches Ctrl+Enter for SQL execution", () => {
+  assert.equal(isExecuteSqlShortcut({ key: "Enter", ctrlKey: true }), true);
+});
+
+test("ignores Enter without modifier", () => {
+  assert.equal(isExecuteSqlShortcut({ key: "Enter" }), false);
+});
+
+test("ignores composing input events", () => {
+  assert.equal(isExecuteSqlShortcut({ key: "Enter", metaKey: true, isComposing: true }), false);
+});
+
+test("matches Cmd+W for closing query tabs", () => {
+  assert.equal(isCloseTabShortcut({ key: "w", metaKey: true }), true);
+});
+
+test("ignores Ctrl+W for closing query tabs", () => {
+  assert.equal(isCloseTabShortcut({ key: "w", ctrlKey: true }), false);
+});
+
+test("matches Ctrl+F for focusing search", () => {
+  assert.equal(isFocusSearchShortcut({ key: "f", ctrlKey: true }), true);
+});
+
+test("matches Cmd+F for focusing search", () => {
+  assert.equal(isFocusSearchShortcut({ key: "F", metaKey: true }), true);
+});
+
+test("ignores focus search shortcut while composing", () => {
+  assert.equal(isFocusSearchShortcut({ key: "f", ctrlKey: true, isComposing: true }), false);
+});
+
+test("ignores Alt+F for focusing search", () => {
+  assert.equal(isFocusSearchShortcut({ key: "f", altKey: true }), false);
+});
+
+test("matches Cmd+S for saving", () => {
+  assert.equal(isSaveShortcut({ key: "s", metaKey: true }), true);
+});
+
+test("matches Ctrl+S for saving", () => {
+  assert.equal(isSaveShortcut({ key: "S", ctrlKey: true }), true);
+});
+
+test("ignores save shortcut while composing", () => {
+  assert.equal(isSaveShortcut({ key: "s", metaKey: true, isComposing: true }), false);
+});
+
+test("ignores Alt+S for saving", () => {
+  assert.equal(isSaveShortcut({ key: "s", altKey: true }), false);
+});
+
+test("detects object source editor targets for contextual save", () => {
+  const target = {
+    closest: (selector: string) =>
+      selector === "[data-object-source-editor], [data-object-source-preview]" ? {} : null,
+  };
+
+  assert.equal(isObjectSourceSaveShortcutTarget(target), true);
+});
+
+test("ignores regular editor targets for contextual object source save", () => {
+  const target = {
+    closest: () => null,
+  };
+
+  assert.equal(isObjectSourceSaveShortcutTarget(target), false);
+});
+
+test("matches Escape for cancelling search", () => {
+  assert.equal(isCancelSearchShortcut({ key: "Escape" }), true);
+});
+
+test("ignores cancelling search while composing", () => {
+  assert.equal(isCancelSearchShortcut({ key: "Escape", isComposing: true }), false);
+});

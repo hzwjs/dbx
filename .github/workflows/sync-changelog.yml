@@ -20,7 +20,7 @@ jobs:
           node-version: 22
 
       - name: Generate changelog JSON
-        run: node scripts/sync-changelog.mjs
+        run: node .github/scripts/sync-changelog.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
