@@ -844,14 +844,7 @@ function dropTable() {
 
 async function refreshTableList(node: TreeNode) {
   if (!node.connectionId || !node.database) return;
-  const config = connectionStore.getConfig(node.connectionId);
-  if (config?.db_type === "sqlserver" && node.schema?.toLowerCase() === "dbo") {
-    await connectionStore.loadSqlServerDatabaseObjects(node.connectionId, node.database, { force: true });
-  } else if (node.schema) {
-    await connectionStore.loadTables(node.connectionId, node.database, node.schema, { force: true });
-  } else {
-    await connectionStore.loadTables(node.connectionId, node.database, undefined, { force: true });
-  }
+  await connectionStore.refreshObjectListTreeNode(node.connectionId, node.database, node.schema);
 }
 
 async function confirmDropTable() {
