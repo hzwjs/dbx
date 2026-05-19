@@ -79,9 +79,18 @@ pub enum AgentMethod {
     TestConnection,
     ListDatabases,
     ListSchemas,
+    ListTables,
+    ListObjects,
+    GetColumns,
+    ListIndexes,
+    ListForeignKeys,
+    ListTriggers,
+    GetTableDdl,
     ExecuteQuery,
     ExecuteQueryPage,
     FetchQueryPage,
+    CloseQuerySession,
+    ExecuteTransaction,
     Disconnect,
     Shutdown,
 }
@@ -94,9 +103,18 @@ impl AgentMethod {
             Self::TestConnection => "test_connection",
             Self::ListDatabases => "list_databases",
             Self::ListSchemas => "list_schemas",
+            Self::ListTables => "list_tables",
+            Self::ListObjects => "list_objects",
+            Self::GetColumns => "get_columns",
+            Self::ListIndexes => "list_indexes",
+            Self::ListForeignKeys => "list_foreign_keys",
+            Self::ListTriggers => "list_triggers",
+            Self::GetTableDdl => "get_table_ddl",
             Self::ExecuteQuery => "execute_query",
             Self::ExecuteQueryPage => "execute_query_page",
             Self::FetchQueryPage => "fetch_query_page",
+            Self::CloseQuerySession => "close_query_session",
+            Self::ExecuteTransaction => "execute_transaction",
             Self::Disconnect => "disconnect",
             Self::Shutdown => "shutdown",
         }
@@ -328,6 +346,54 @@ impl AgentDriverClient {
         self.call_method(AgentMethod::ListSchemas, serde_json::json!({ "database": database })).await
     }
 
+    pub async fn list_tables<T: DeserializeOwned + Send + 'static>(&mut self, schema: &str) -> Result<T, String> {
+        self.call_method(AgentMethod::ListTables, agent_schema_params(schema)).await
+    }
+
+    pub async fn list_objects<T: DeserializeOwned + Send + 'static>(&mut self, schema: &str) -> Result<T, String> {
+        self.call_method(AgentMethod::ListObjects, agent_schema_params(schema)).await
+    }
+
+    pub async fn get_columns<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        schema: &str,
+        table: &str,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::GetColumns, agent_schema_table_params(schema, table)).await
+    }
+
+    pub async fn list_indexes<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        schema: &str,
+        table: &str,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::ListIndexes, agent_schema_table_params(schema, table)).await
+    }
+
+    pub async fn list_foreign_keys<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        schema: &str,
+        table: &str,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::ListForeignKeys, agent_schema_table_params(schema, table)).await
+    }
+
+    pub async fn list_triggers<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        schema: &str,
+        table: &str,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::ListTriggers, agent_schema_table_params(schema, table)).await
+    }
+
+    pub async fn get_table_ddl<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        schema: &str,
+        table: &str,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::GetTableDdl, agent_schema_table_params(schema, table)).await
+    }
+
     pub async fn execute_query<T: DeserializeOwned + Send + 'static>(&mut self, params: Value) -> Result<T, String> {
         self.call_method(AgentMethod::ExecuteQuery, params).await
     }
@@ -341,6 +407,21 @@ impl AgentDriverClient {
 
     pub async fn fetch_query_page<T: DeserializeOwned + Send + 'static>(&mut self, params: Value) -> Result<T, String> {
         self.call_method(AgentMethod::FetchQueryPage, params).await
+    }
+
+    pub async fn close_query_session<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        session_id: &str,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::CloseQuerySession, agent_close_query_session_params(session_id)).await
+    }
+
+    pub async fn execute_transaction<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        statements: &[String],
+        schema: Option<&str>,
+    ) -> Result<T, String> {
+        self.call_method(AgentMethod::ExecuteTransaction, agent_transaction_params(statements, schema)).await
     }
 
     pub async fn call_mongo_method<T: DeserializeOwned + Send + 'static>(
@@ -453,6 +534,25 @@ pub fn is_unsupported_handshake_error(error: &str) -> bool {
     error.contains("Unknown method: handshake")
         || error.contains("Method not found: handshake")
         || error.contains("method not found: handshake")
+}
+
+pub fn agent_schema_params(schema: &str) -> Value {
+    serde_json::json!({ "schema": schema })
+}
+
+pub fn agent_schema_table_params(schema: &str, table: &str) -> Value {
+    serde_json::json!({ "schema": schema, "table": table })
+}
+
+pub fn agent_close_query_session_params(session_id: &str) -> Value {
+    serde_json::json!({ "sessionId": session_id })
+}
+
+pub fn agent_transaction_params(statements: &[String], schema: Option<&str>) -> Value {
+    serde_json::json!({
+        "statements": statements,
+        "schema": schema,
+    })
 }
 
 pub fn mongo_database_params(database: &str) -> Value {
@@ -574,7 +674,8 @@ impl Drop for AgentDriverClient {
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_handshake_params, agent_java_args, agent_proxy_env_vars, format_agent_process_error,
+        agent_close_query_session_params, agent_handshake_params, agent_java_args, agent_proxy_env_vars,
+        agent_schema_params, agent_schema_table_params, agent_transaction_params, format_agent_process_error,
         is_unsupported_handshake_error, mongo_collection_params, mongo_database_params, mongo_document_id_params,
         read_agent_line, AgentCapability, AgentDriverClient, AgentHandshake, AgentMethod, MongoAgentMethod, StderrTail,
         AGENT_PROTOCOL_VERSION,
@@ -691,9 +792,18 @@ mod tests {
         assert_eq!(AgentMethod::TestConnection.as_str(), "test_connection");
         assert_eq!(AgentMethod::ListDatabases.as_str(), "list_databases");
         assert_eq!(AgentMethod::ListSchemas.as_str(), "list_schemas");
+        assert_eq!(AgentMethod::ListTables.as_str(), "list_tables");
+        assert_eq!(AgentMethod::ListObjects.as_str(), "list_objects");
+        assert_eq!(AgentMethod::GetColumns.as_str(), "get_columns");
+        assert_eq!(AgentMethod::ListIndexes.as_str(), "list_indexes");
+        assert_eq!(AgentMethod::ListForeignKeys.as_str(), "list_foreign_keys");
+        assert_eq!(AgentMethod::ListTriggers.as_str(), "list_triggers");
+        assert_eq!(AgentMethod::GetTableDdl.as_str(), "get_table_ddl");
         assert_eq!(AgentMethod::ExecuteQuery.as_str(), "execute_query");
         assert_eq!(AgentMethod::ExecuteQueryPage.as_str(), "execute_query_page");
         assert_eq!(AgentMethod::FetchQueryPage.as_str(), "fetch_query_page");
+        assert_eq!(AgentMethod::CloseQuerySession.as_str(), "close_query_session");
+        assert_eq!(AgentMethod::ExecuteTransaction.as_str(), "execute_transaction");
         assert_eq!(AgentMethod::Disconnect.as_str(), "disconnect");
         assert_eq!(AgentMethod::Shutdown.as_str(), "shutdown");
     }
@@ -712,9 +822,18 @@ mod tests {
     fn exposes_schema_and_query_protocol_wrappers() {
         let _list_databases = AgentDriverClient::list_databases::<serde_json::Value>;
         let _list_schemas = AgentDriverClient::list_schemas::<serde_json::Value>;
+        let _list_tables = AgentDriverClient::list_tables::<serde_json::Value>;
+        let _list_objects = AgentDriverClient::list_objects::<serde_json::Value>;
+        let _get_columns = AgentDriverClient::get_columns::<serde_json::Value>;
+        let _list_indexes = AgentDriverClient::list_indexes::<serde_json::Value>;
+        let _list_foreign_keys = AgentDriverClient::list_foreign_keys::<serde_json::Value>;
+        let _list_triggers = AgentDriverClient::list_triggers::<serde_json::Value>;
+        let _get_table_ddl = AgentDriverClient::get_table_ddl::<serde_json::Value>;
         let _execute_query = AgentDriverClient::execute_query::<serde_json::Value>;
         let _execute_query_page = AgentDriverClient::execute_query_page::<serde_json::Value>;
         let _fetch_query_page = AgentDriverClient::fetch_query_page::<serde_json::Value>;
+        let _close_query_session = AgentDriverClient::close_query_session::<serde_json::Value>;
+        let _execute_transaction = AgentDriverClient::execute_transaction::<serde_json::Value>;
     }
 
     #[test]
@@ -737,6 +856,20 @@ mod tests {
         assert_eq!(
             mongo_document_id_params("app", "orders", "abc"),
             serde_json::json!({ "database": "app", "collection": "orders", "id": "abc" })
+        );
+    }
+
+    #[test]
+    fn builds_schema_table_and_transaction_params() {
+        assert_eq!(agent_schema_params("public"), serde_json::json!({ "schema": "public" }));
+        assert_eq!(
+            agent_schema_table_params("public", "orders"),
+            serde_json::json!({ "schema": "public", "table": "orders" })
+        );
+        assert_eq!(agent_close_query_session_params("session-1"), serde_json::json!({ "sessionId": "session-1" }));
+        assert_eq!(
+            agent_transaction_params(&["BEGIN".to_string(), "COMMIT".to_string()], Some("public")),
+            serde_json::json!({ "statements": ["BEGIN", "COMMIT"], "schema": "public" })
         );
     }
 

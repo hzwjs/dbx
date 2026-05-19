@@ -548,7 +548,7 @@ pub async fn close_query_session(
             let client = client.clone();
             drop(connections);
             let mut client = client.lock().await;
-            client.call("close_query_session", agent_close_query_session_params(session_id)).await
+            client.close_query_session(session_id).await
         }
         _ => Ok(false),
     }
@@ -953,11 +953,7 @@ async fn exec_tx_explicit_inner(
     let conns = state.connections.read().await;
     if let Some(crate::connection::PoolKind::Agent(client)) = conns.get(pool_key) {
         let mut client = client.lock().await;
-        let params = serde_json::json!({
-            "statements": statements,
-            "schema": schema,
-        });
-        let result: db::QueryResult = client.call("execute_transaction", params).await?;
+        let result: db::QueryResult = client.execute_transaction(statements, schema).await?;
         return Ok(db::QueryResult { execution_time_ms: start.elapsed().as_millis(), ..result });
     }
     drop(conns);

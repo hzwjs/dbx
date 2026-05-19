@@ -373,7 +373,7 @@ pub async fn list_tables_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("list_tables", serde_json::json!({"schema": schema})).await;
+            return client.list_tables(schema).await;
         }
     }
 
@@ -507,7 +507,7 @@ pub async fn list_objects_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("list_objects", serde_json::json!({"schema": schema})).await;
+            return client.list_objects(schema).await;
         }
     }
 
@@ -596,7 +596,7 @@ pub async fn get_columns_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("get_columns", serde_json::json!({"schema": schema, "table": table})).await;
+            return client.get_columns(schema, table).await;
         }
     }
 
@@ -636,7 +636,7 @@ pub async fn list_indexes_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("list_indexes", serde_json::json!({"schema": schema, "table": table})).await;
+            return client.list_indexes(schema, table).await;
         }
     }
 
@@ -676,7 +676,7 @@ pub async fn list_foreign_keys_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("list_foreign_keys", serde_json::json!({"schema": schema, "table": table})).await;
+            return client.list_foreign_keys(schema, table).await;
         }
     }
 
@@ -716,7 +716,7 @@ pub async fn list_triggers_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("list_triggers", serde_json::json!({"schema": schema, "table": table})).await;
+            return client.list_triggers(schema, table).await;
         }
     }
 
@@ -786,7 +786,7 @@ pub async fn get_table_ddl_core(
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return client.call("get_table_ddl", serde_json::json!({"schema": schema, "table": table})).await;
+            return client.get_table_ddl(schema, table).await;
         }
     }
 
