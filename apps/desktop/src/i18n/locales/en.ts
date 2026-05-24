@@ -1286,6 +1286,7 @@ export default {
     fontSize: "Font Size",
     theme: "Theme",
     selectTheme: "Select theme...",
+    followAppTheme: "Follow app theme",
     appLayout: "Interface Layout",
     appLayoutSeparated: "Modern separated",
     appLayoutSeparatedDescription: "Clear panel separation with block-style tabs.",

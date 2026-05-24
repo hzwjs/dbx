@@ -1263,6 +1263,7 @@ export default {
     fontSize: "字号",
     theme: "主题",
     selectTheme: "选择主题...",
+    followAppTheme: "跟随应用主题",
     appLayout: "界面布局",
     appLayoutSeparated: "现代分隔",
     appLayoutSeparatedDescription: "面板分隔更清晰，标签页为块状样式。",

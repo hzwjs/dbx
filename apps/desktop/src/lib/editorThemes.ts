@@ -106,6 +106,7 @@ export function buildEditorFontThemeRules(
     ".cm-gutters": {
       borderRight: "0 !important",
       fontSize: `var(${EDITOR_FONT_SIZE_CSS_VAR}, ${defaults?.size ?? 13}px)`,
+      fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, ${defaults?.family ?? "monospace"})`,
       position: "relative",
     },
     ".cm-gutters:after": {

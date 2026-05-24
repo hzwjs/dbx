@@ -733,7 +733,7 @@ watch(
                                 : 'bg-muted-foreground/30 border-muted-foreground/40'
                             "
                           />
-                          {{ theme.label }}
+                          {{ theme.value === "app" ? t("settings.followAppTheme") : theme.label }}
                         </div>
                       </SelectItem>
                     </SelectContent>

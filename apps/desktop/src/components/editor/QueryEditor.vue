@@ -187,6 +187,37 @@ function syncEditorFontCssVars(fontSize = liveFontSize.value, fontFamily = setti
   if (!editorRef.value) return;
   editorRef.value.style.setProperty(EDITOR_FONT_SIZE_CSS_VAR, `${clampEditorFontSize(fontSize)}px`);
   editorRef.value.style.setProperty(EDITOR_FONT_FAMILY_CSS_VAR, fontFamily);
+  const cm = editorRef.value.querySelector(".cm-editor") as HTMLElement | null;
+  if (cm) cm.style.lineHeight = "1.6";
+}
+
+let pendingFontReconfig: { size: number; family: string } | null = null;
+let fontReconfigScheduled = false;
+
+function reconfigureFontTheme(size: number, family: string) {
+  if (!fontThemeComp || !editorViewModule || !view.value) return;
+  view.value.dispatch({
+    effects: fontThemeComp.reconfigure(
+      editorFontTheme(editorViewModule.EditorView, size, family, {
+        fixedHeight: true,
+        scrollable: true,
+      }),
+    ),
+  });
+}
+
+function scheduleFontThemeReconfig(size: number, family: string) {
+  pendingFontReconfig = { size, family };
+  if (fontReconfigScheduled) return;
+  fontReconfigScheduled = true;
+  requestAnimationFrame(() => {
+    fontReconfigScheduled = false;
+    const p = pendingFontReconfig;
+    if (p) {
+      pendingFontReconfig = null;
+      reconfigureFontTheme(p.size, p.family);
+    }
+  });
 }
 
 function applyLiveFontSize(size: number) {
@@ -194,7 +225,10 @@ function applyLiveFontSize(size: number) {
   if (liveFontSize.value === next) return;
   liveFontSize.value = next;
   syncEditorFontCssVars(next);
-  view.value?.requestMeasure();
+  // Throttle compartment reconfiguration to at most once per animation
+  // frame so that CSS variable changes remain smooth on every wheel tick,
+  // while the CodeMirror measure → syncGutters path keeps gutters aligned.
+  scheduleFontThemeReconfig(next, settingsStore.editorSettings.fontFamily);
 }
 
 function commitFontSize(size: number) {
