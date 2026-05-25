@@ -130,7 +130,13 @@ import {
 } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
 import { dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGridSaveUi";
-import { appendColumnValueFilterCondition, buildColumnValueFilterCondition } from "@/lib/dataGridColumnFilter";
+import {
+  appendColumnValueFilterCondition,
+  buildColumnValueFilterCondition,
+  combineWhereInputs,
+  filterModeNeedsValue,
+  parseFilterValue,
+} from "@/lib/dataGridColumnFilter";
 import { clampSearchSplitWidth } from "@/lib/dataGridSearchSplit";
 import {
   MAX_RESULT_PAGE_SIZE,
@@ -374,10 +380,41 @@ type LocalColumnFilterDraft = {
   values: Set<string>;
 };
 
+type FilterMode = DataGridContextFilterMode;
+
+type StructuredFilterRule = {
+  id: string;
+  columnName: string;
+  mode: FilterMode;
+  rawValue: string;
+};
+
 const localColumnFilters = ref<Record<number, Set<string>>>({});
 const localFilterOpenColumn = ref<number | null>(null);
 const localFilterSearch = ref("");
 const localFilterDraft = ref<LocalColumnFilterDraft | null>(null);
+const filterBuilderOpen = ref(false);
+const structuredFilterRules = ref<StructuredFilterRule[]>([]);
+const appliedStructuredWhereInput = ref("");
+const filterModeOptions: Array<{ value: FilterMode; labelKey: string }> = [
+  { value: "equals", labelKey: "grid.filterBuilderEquals" },
+  { value: "not-equals", labelKey: "grid.filterBuilderNotEquals" },
+  { value: "like", labelKey: "grid.filterBuilderContains" },
+  { value: "not-like", labelKey: "grid.filterBuilderNotContains" },
+  { value: "greater-than", labelKey: "grid.filterBuilderGreaterThan" },
+  { value: "less-than", labelKey: "grid.filterBuilderLessThan" },
+  { value: "is-null", labelKey: "grid.filterBuilderIsNull" },
+  { value: "is-not-null", labelKey: "grid.filterBuilderIsNotNull" },
+];
+const filterBuilderColumns = computed(() => props.tableMeta?.columns ?? []);
+const filterBuilderColumnOptions = computed(() => filterBuilderColumns.value.map((column) => column.name));
+const structuredFilterCount = computed(
+  () =>
+    structuredFilterRules.value.filter(
+      (rule) => !!rule.columnName && (!filterModeNeedsValue(rule.mode) || rule.rawValue.trim().length > 0),
+    ).length,
+);
+const hasStructuredFilters = computed(() => !!combineWhereInputs(undefined, appliedStructuredWhereInput.value));
 const formatterOpenColumn = ref<number | null>(null);
 type FormatterDraftKind = Exclude<ColumnFormatterConfig["kind"], "custom-ref">;
 const CUSTOM_FORMATTER_NEW = "__new";
@@ -740,6 +777,99 @@ function clearLocalFilter(colIdx?: number) {
   closeLocalFilter();
   resetGridVerticalScroll();
 }
+
+function defaultStructuredFilterRule(): StructuredFilterRule {
+  return {
+    id: uuid(),
+    columnName: filterBuilderColumnOptions.value[0] ?? "",
+    mode: "equals",
+    rawValue: "",
+  };
+}
+
+function ensureStructuredFilterRule() {
+  if (structuredFilterRules.value.length === 0 && filterBuilderColumnOptions.value.length > 0) {
+    structuredFilterRules.value = [defaultStructuredFilterRule()];
+  }
+}
+
+function addStructuredFilterRule() {
+  ensureStructuredFilterRule();
+  structuredFilterRules.value = [...structuredFilterRules.value, defaultStructuredFilterRule()];
+}
+
+function removeStructuredFilterRule(ruleId: string) {
+  structuredFilterRules.value = structuredFilterRules.value.filter((rule) => rule.id !== ruleId);
+  if (structuredFilterRules.value.length === 0) {
+    appliedStructuredWhereInput.value = "";
+  }
+}
+
+function updateStructuredFilterRule(ruleId: string, patch: Partial<StructuredFilterRule>) {
+  structuredFilterRules.value = structuredFilterRules.value.map((rule) => {
+    if (rule.id !== ruleId) return rule;
+    const next = { ...rule, ...patch };
+    if (!filterModeNeedsValue(next.mode)) next.rawValue = "";
+    return next;
+  });
+}
+
+function resetStructuredFilters() {
+  appliedStructuredWhereInput.value = "";
+  structuredFilterRules.value = filterBuilderColumnOptions.value.length > 0 ? [defaultStructuredFilterRule()] : [];
+}
+
+async function clearAllFilters() {
+  if (!canUseWhereSearch.value) return;
+  whereFilterInput.value = "";
+  resetStructuredFilters();
+  await applyWhereFilter();
+}
+
+async function applyStructuredFilters() {
+  if (!canUseWhereSearch.value) return;
+  const conditions = (
+    await Promise.all(
+      structuredFilterRules.value.map(async (rule) => {
+        if (!rule.columnName) return null;
+        if (filterModeNeedsValue(rule.mode) && !rule.rawValue.trim()) return null;
+        const columnInfo = filterBuilderColumns.value.find((column) => column.name === rule.columnName);
+        return (
+          (await buildDataGridContextFilterCondition({
+            databaseType: props.databaseType,
+            columnName: rule.columnName,
+            columnInfo,
+            mode: rule.mode,
+            value: filterModeNeedsValue(rule.mode) ? parseFilterValue(rule.rawValue, columnInfo) : null,
+          })) ?? null
+        );
+      }),
+    )
+  ).filter((condition): condition is string => !!condition);
+
+  appliedStructuredWhereInput.value = conditions.join(" AND ");
+  filterBuilderOpen.value = false;
+  await applyWhereFilter();
+}
+
+watch(
+  filterBuilderColumnOptions,
+  (columns) => {
+    if (columns.length === 0) {
+      structuredFilterRules.value = [];
+      appliedStructuredWhereInput.value = "";
+      return;
+    }
+    if (structuredFilterRules.value.length === 0) {
+      structuredFilterRules.value = [defaultStructuredFilterRule()];
+      return;
+    }
+    structuredFilterRules.value = structuredFilterRules.value.map((rule) =>
+      columns.includes(rule.columnName) ? rule : { ...rule, columnName: columns[0] ?? "" },
+    );
+  },
+  { immediate: true },
+);
 
 function updateSuggestionPosition() {
   nextTick(() => {
@@ -1330,7 +1460,7 @@ watch(clientSearchText, (value) => {
 });
 
 function currentWhereInput(): string | undefined {
-  return whereFilterInput.value.trim() || undefined;
+  return combineWhereInputs(whereFilterInput.value, appliedStructuredWhereInput.value);
 }
 
 function currentOrderBy(): string | undefined {
@@ -1338,6 +1468,10 @@ function currentOrderBy(): string | undefined {
     orderByInput.value.trim() ||
     (sortCol.value ? `${queryColumnRef(sortCol.value)} ${sortDir.value.toUpperCase()}` : undefined)
   );
+}
+
+function syncOrderByInputWithSort(column: string | null, direction: "asc" | "desc" | null) {
+  orderByInput.value = column && direction ? `${queryColumnRef(column)} ${direction.toUpperCase()}` : "";
 }
 
 function firstPage() {
@@ -2102,23 +2236,25 @@ function setDetailNull() {
 
 function toggleSort(colName: string, colIdx: number) {
   if (getIsResizing()) return;
-  orderByInput.value = "";
   currentPage.value = 1;
   resetGridVerticalScroll(true);
   if (sortCol.value === colName && sortColIndex.value === colIdx) {
     if (sortDir.value === "asc") {
       sortDir.value = "desc";
+      syncOrderByInputWithSort(colName, "desc");
       emit("sort", colName, colIdx, "desc", currentWhereInput());
     } else {
       sortCol.value = null;
       sortColIndex.value = null;
       sortDir.value = "asc";
+      syncOrderByInputWithSort(null, null);
       emit("sort", colName, colIdx, null, currentWhereInput());
     }
   } else {
     sortCol.value = colName;
     sortColIndex.value = colIdx;
     sortDir.value = "asc";
+    syncOrderByInputWithSort(colName, "asc");
     emit("sort", colName, colIdx, "asc", currentWhereInput());
   }
 }
@@ -2127,21 +2263,20 @@ function applyContextSort(direction: "asc" | "desc" | null) {
   if (!contextColumn.value || !contextCell.value) return;
   const column = contextColumn.value;
   const columnIndex = contextCell.value.col;
-  orderByInput.value = "";
   currentPage.value = 1;
   if (direction) {
     sortCol.value = column;
     sortColIndex.value = columnIndex;
     sortDir.value = direction;
+    syncOrderByInputWithSort(column, direction);
   } else {
     sortCol.value = null;
     sortColIndex.value = null;
     sortDir.value = "asc";
+    syncOrderByInputWithSort(null, null);
   }
   emit("sort", column, columnIndex, direction, currentWhereInput());
 }
-
-type FilterMode = DataGridContextFilterMode;
 
 async function contextFilterCondition(mode: FilterMode): Promise<string | null> {
   if (!contextColumn.value) return null;
@@ -2166,9 +2301,7 @@ async function applyContextFilter(mode: FilterMode) {
 }
 
 async function clearContextFilter() {
-  if (!canUseWhereSearch.value) return;
-  whereFilterInput.value = "";
-  await applyWhereFilter();
+  await clearAllFilters();
 }
 
 async function applyOrderBySearch() {
@@ -2189,7 +2322,7 @@ async function applyOrderBySearch() {
       primaryKeys: props.tableMeta.primaryKeys,
       orderBy: orderByClause,
       limit: pageSize.value,
-      whereInput: whereFilterInput.value.trim() || undefined,
+      whereInput: currentWhereInput(),
       includeRowId: tableUsesSyntheticRowId.value,
     });
     await props.onExecuteSql(sql);
@@ -2216,7 +2349,7 @@ async function applyWhereFilter() {
         orderByInput.value.trim() ||
         (sortCol.value ? `${queryColumnRef(sortCol.value)} ${sortDir.value.toUpperCase()}` : undefined),
       limit: pageSize.value,
-      whereInput: whereFilterInput.value.trim() || undefined,
+      whereInput: currentWhereInput(),
       includeRowId: tableUsesSyntheticRowId.value,
     });
     await props.onExecuteSql(sql);
@@ -3233,6 +3366,133 @@ defineExpose({
                     class="flex flex-1 items-center gap-1 px-2 py-0.5 border-l min-w-0 relative"
                     :style="whereSearchPaneStyle"
                   >
+                    <Popover v-model:open="filterBuilderOpen">
+                      <PopoverTrigger as-child>
+                        <button
+                          type="button"
+                          class="relative flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-medium transition-colors"
+                          :class="
+                            hasStructuredFilters
+                              ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
+                              : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'
+                          "
+                          @click="ensureStructuredFilterRule"
+                        >
+                          <Filter class="h-3 w-3" />
+                          <span
+                            v-if="structuredFilterCount"
+                            class="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] leading-none text-primary-foreground"
+                          >
+                            {{ structuredFilterCount }}
+                          </span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" class="w-[380px] max-w-[calc(100vw-24px)] gap-3 p-3">
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="text-xs font-medium text-foreground">{{ t("grid.filter") }}</div>
+                          <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" @click="addStructuredFilterRule">
+                            <Plus class="mr-1 h-3.5 w-3.5" />
+                            {{ t("grid.filterBuilderAddRule") }}
+                          </Button>
+                        </div>
+
+                        <div v-if="structuredFilterRules.length" class="space-y-2">
+                          <div
+                            v-for="rule in structuredFilterRules"
+                            :key="rule.id"
+                            class="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2"
+                          >
+                            <Select
+                              :model-value="rule.columnName"
+                              @update:model-value="
+                                (value: any) => updateStructuredFilterRule(rule.id, { columnName: String(value) })
+                              "
+                            >
+                              <SelectTrigger class="h-8 min-w-0 text-xs">
+                                <SelectValue :placeholder="t('grid.filterBuilderColumn')" />
+                              </SelectTrigger>
+                              <SelectContent position="popper">
+                                <SelectItem
+                                  v-for="columnName in filterBuilderColumnOptions"
+                                  :key="columnName"
+                                  :value="columnName"
+                                >
+                                  {{ columnName }}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            <Select
+                              :model-value="rule.mode"
+                              @update:model-value="
+                                (value: any) => updateStructuredFilterRule(rule.id, { mode: value as FilterMode })
+                              "
+                            >
+                              <SelectTrigger class="h-8 min-w-0 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent position="popper">
+                                <SelectItem
+                                  v-for="option in filterModeOptions"
+                                  :key="option.value"
+                                  :value="option.value"
+                                >
+                                  {{ t(option.labelKey) }}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            <Input
+                              v-if="filterModeNeedsValue(rule.mode)"
+                              :model-value="rule.rawValue"
+                              class="h-8 min-w-0 text-xs"
+                              :placeholder="t('grid.filterBuilderValue')"
+                              @update:model-value="
+                                (value) => updateStructuredFilterRule(rule.id, { rawValue: String(value ?? '') })
+                              "
+                              @keydown.enter.prevent="applyStructuredFilters"
+                            />
+                            <div
+                              v-else
+                              class="flex h-8 items-center rounded-md border border-dashed px-2 text-xs text-muted-foreground"
+                            >
+                              {{ t("grid.filterBuilderNoValue") }}
+                            </div>
+
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              class="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                              :disabled="structuredFilterRules.length === 1"
+                              @click="removeStructuredFilterRule(rule.id)"
+                            >
+                              <Trash2 class="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div
+                          v-else
+                          class="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground"
+                        >
+                          {{ t("grid.filterBuilderEmpty") }}
+                        </div>
+
+                        <div class="flex items-center justify-between gap-2 pt-1">
+                          <Button variant="ghost" size="sm" class="h-8 px-2 text-xs" @click="clearAllFilters">
+                            {{ t("grid.clearFilter") }}
+                          </Button>
+                          <div class="flex items-center gap-2">
+                            <Button variant="ghost" size="sm" class="h-8 px-2 text-xs" @click="resetStructuredFilters">
+                              {{ t("grid.resetFilterBuilder") }}
+                            </Button>
+                            <Button size="sm" class="h-8 px-3 text-xs" @click="applyStructuredFilters">
+                              {{ t("grid.applyFilter") }}
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     <span class="text-blue-600 dark:text-blue-400 text-xs font-medium select-none shrink-0">WHERE</span>
                     <input
                       ref="whereFilterInputRef"
