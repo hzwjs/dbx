@@ -5299,7 +5299,7 @@ defineExpose({
                       v-else
                       ref="valueEditorContainer"
                       data-cell-detail-editor-root
-                      class="min-h-0 flex-1 w-full rounded border overflow-hidden"
+                      class="min-h-0 flex-1 w-full rounded border overflow-auto"
                     />
                   </div>
                   <div class="flex gap-1 mt-2 shrink-0">
