@@ -906,6 +906,13 @@ export default {
     apply: "Aplicar cambios",
     ready: "Listo",
     saved: "Estructura de tabla actualizada",
+    extendedProperties: "Extendido",
+    autoIncrement: "Auto Incremento",
+    onUpdateCurrentTimestamp: "Actualización Auto",
+    identity: "Identidad",
+    identityGeneration: "Generación",
+    identitySeed: "Semilla",
+    identityIncrement: "Incremento",
   },
   diagram: {
     title: "Diagrama de relaciones",

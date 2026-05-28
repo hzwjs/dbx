@@ -1,5 +1,17 @@
 import type { ColumnInfo, DatabaseType, IndexInfo } from "../types/database.ts";
 
+export interface ColumnIdentity {
+  generation?: "BY DEFAULT" | "ALWAYS";
+  seed?: number;
+  increment?: number;
+}
+
+export interface ColumnExtra {
+  autoIncrement?: boolean;
+  onUpdateCurrentTimestamp?: boolean;
+  identity?: ColumnIdentity;
+}
+
 export interface EditableStructureColumn {
   id: string;
   name: string;
@@ -8,6 +20,7 @@ export interface EditableStructureColumn {
   defaultValue: string;
   comment: string;
   isPrimaryKey: boolean;
+  extra: ColumnExtra;
   original?: ColumnInfo;
   originalPosition?: number;
   markedForDrop: boolean;

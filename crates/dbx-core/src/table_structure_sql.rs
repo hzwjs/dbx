@@ -16,11 +16,35 @@ pub struct EditableStructureColumn {
     #[serde(default)]
     pub is_primary_key: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra: Option<ColumnExtra>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original: Option<ColumnInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original_position: Option<usize>,
     #[serde(default)]
     pub marked_for_drop: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnExtra {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_increment: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_update_current_timestamp: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<ColumnIdentity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnIdentity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub increment: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -365,9 +389,17 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
         if !column.is_nullable && !column.is_primary_key && dialect != StructureDialect::ClickHouse {
             parts.push("NOT NULL".to_string());
         }
+        if let Some(extra_clause) = column_extra_clause(dialect, column) {
+            parts.push(extra_clause);
+        }
         let default_value = normalize_default(Some(&column.default_value));
         if !default_value.is_empty() {
             parts.push(format!("DEFAULT {default_value}"));
+        }
+        if let Some(on_update) = column.extra.as_ref().and_then(|e| e.on_update_current_timestamp).filter(|v| *v) {
+            if on_update && dialect == StructureDialect::Mysql {
+                parts.push("ON UPDATE CURRENT_TIMESTAMP".to_string());
+            }
         }
         if dialect == StructureDialect::Mysql && capabilities.comment && !clean(&column.comment).is_empty() {
             parts.push(format!("COMMENT {}", quote_string(&clean(&column.comment))));
@@ -1205,14 +1237,63 @@ fn column_definition(dialect: StructureDialect, column: &EditableStructureColumn
     if !column.is_nullable && !is_oracle_like(dialect) && dialect != StructureDialect::ClickHouse {
         parts.push("NOT NULL".to_string());
     }
+    if let Some(extra_clause) = column_extra_clause(dialect, column) {
+        parts.push(extra_clause);
+    }
     let default_value = normalize_default(Some(&column.default_value));
     if !default_value.is_empty() {
         parts.push(format!("DEFAULT {default_value}"));
+    }
+    if let Some(on_update) = column.extra.as_ref().and_then(|e| e.on_update_current_timestamp).filter(|v| *v) {
+        if on_update && dialect == StructureDialect::Mysql {
+            parts.push("ON UPDATE CURRENT_TIMESTAMP".to_string());
+        }
     }
     if dialect == StructureDialect::Mysql && !clean(&column.comment).is_empty() {
         parts.push(format!("COMMENT {}", quote_string(&clean(&column.comment))));
     }
     parts.join(" ")
+}
+
+fn column_extra_clause(dialect: StructureDialect, column: &EditableStructureColumn) -> Option<String> {
+    let extra = column.extra.as_ref()?;
+    match dialect {
+        StructureDialect::Mysql => {
+            let mut clauses = Vec::new();
+            if extra.auto_increment.unwrap_or(false) {
+                clauses.push("AUTO_INCREMENT".to_string());
+            }
+            if clauses.is_empty() {
+                None
+            } else {
+                Some(clauses.join(" "))
+            }
+        }
+        StructureDialect::Postgres | StructureDialect::H2 => {
+            if let Some(identity) = &extra.identity {
+                let generation = identity.generation.as_deref().unwrap_or("BY DEFAULT");
+                let mut clause = format!("GENERATED {generation} AS IDENTITY");
+                if identity.seed.is_some() || identity.increment.is_some() {
+                    let start = identity.seed.unwrap_or(1);
+                    let inc = identity.increment.unwrap_or(1);
+                    clause.push_str(&format!(" (START WITH {start} INCREMENT BY {inc})"));
+                }
+                Some(clause)
+            } else {
+                None
+            }
+        }
+        StructureDialect::SqlServer => {
+            if extra.auto_increment.unwrap_or(false) || extra.identity.is_some() {
+                let seed = extra.identity.as_ref().and_then(|i| i.seed).unwrap_or(1);
+                let increment = extra.identity.as_ref().and_then(|i| i.increment).unwrap_or(1);
+                Some(format!("IDENTITY({seed}, {increment})"))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 fn column_data_type(dialect: StructureDialect, column: &EditableStructureColumn) -> String {
@@ -1577,6 +1658,7 @@ mod tests {
             default_value: String::new(),
             comment: String::new(),
             is_primary_key: false,
+            extra: None,
             original: None,
             original_position: None,
             marked_for_drop: false,
@@ -2137,5 +2219,116 @@ mod tests {
         assert_eq!(result.statements, Vec::<String>::new());
         assert_eq!(result.warnings.len(), 1);
         assert!(result.warnings[0].contains("primary key"));
+    }
+
+    #[test]
+    fn mysql_create_table_with_auto_increment() {
+        let mut col = column("id");
+        col.data_type = "int".to_string();
+        col.is_nullable = false;
+        col.is_primary_key = true;
+        col.extra = Some(ColumnExtra {
+            auto_increment: Some(true),
+            on_update_current_timestamp: None,
+            identity: None,
+        });
+
+        let result = build_create_table_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::Mysql),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![col],
+            indexes: Vec::new(),
+            table_comment: None,
+            original_table_comment: None,
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert_eq!(result.statements.len(), 1);
+        assert!(result.statements[0].contains("AUTO_INCREMENT"));
+    }
+
+    #[test]
+    fn mysql_create_table_with_on_update_current_timestamp() {
+        let mut col = column("updated_at");
+        col.data_type = "timestamp".to_string();
+        col.is_nullable = false;
+        col.default_value = "CURRENT_TIMESTAMP".to_string();
+        col.extra = Some(ColumnExtra {
+            auto_increment: None,
+            on_update_current_timestamp: Some(true),
+            identity: None,
+        });
+
+        let result = build_create_table_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::Mysql),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![col],
+            indexes: Vec::new(),
+            table_comment: None,
+            original_table_comment: None,
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert!(result.statements[0].contains("ON UPDATE CURRENT_TIMESTAMP"));
+    }
+
+    #[test]
+    fn postgres_create_table_with_identity() {
+        let mut col = column("id");
+        col.data_type = "integer".to_string();
+        col.is_nullable = false;
+        col.extra = Some(ColumnExtra {
+            auto_increment: None,
+            on_update_current_timestamp: None,
+            identity: Some(ColumnIdentity {
+                generation: Some("BY DEFAULT".to_string()),
+                seed: None,
+                increment: None,
+            }),
+        });
+
+        let result = build_create_table_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::Postgres),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![col],
+            indexes: Vec::new(),
+            table_comment: None,
+            original_table_comment: None,
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert!(result.statements[0].contains("GENERATED BY DEFAULT AS IDENTITY"));
+    }
+
+    #[test]
+    fn sqlserver_create_table_with_identity() {
+        let mut col = column("id");
+        col.data_type = "int".to_string();
+        col.is_nullable = false;
+        col.extra = Some(ColumnExtra {
+            auto_increment: Some(true),
+            on_update_current_timestamp: None,
+            identity: Some(ColumnIdentity {
+                generation: None,
+                seed: Some(100),
+                increment: Some(5),
+            }),
+        });
+
+        let result = build_create_table_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::SqlServer),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![col],
+            indexes: Vec::new(),
+            table_comment: None,
+            original_table_comment: None,
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert!(result.statements[0].contains("IDENTITY(100, 5)"));
     }
 }

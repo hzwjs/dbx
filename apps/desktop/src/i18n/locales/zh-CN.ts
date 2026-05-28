@@ -990,6 +990,13 @@ export default {
     apply: "应用变更",
     ready: "可执行",
     saved: "表结构已更新",
+    extendedProperties: "扩展属性",
+    autoIncrement: "自增",
+    onUpdateCurrentTimestamp: "自动更新时间",
+    identity: "标识列",
+    identityGeneration: "生成方式",
+    identitySeed: "起始值",
+    identityIncrement: "增量",
   },
   diagram: {
     title: "关系图",

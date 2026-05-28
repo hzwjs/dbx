@@ -147,17 +147,28 @@ const indexTypeOptions = computed(() =>
   structureCapabilities.value.indexType ? (indexTypesByDb[databaseType.value ?? ""] ?? []) : [],
 );
 
-const colLabels = computed(() => [
-  "#",
-  t("structureEditor.columnName"),
-  t("structureEditor.dataType"),
-  t("structureEditor.length"),
-  t("structureEditor.nullable"),
-  t("structureEditor.primaryKey"),
-  t("structureEditor.defaultValue"),
-  t("structureEditor.comment"),
-  t("structureEditor.actions"),
-]);
+const showExtendedProperties = computed(() => {
+  const dt = databaseType.value;
+  return dt === "mysql" || dt === "postgres" || dt === "sqlserver";
+});
+
+const colLabels = computed(() => {
+  const labels = [
+    "#",
+    t("structureEditor.columnName"),
+    t("structureEditor.dataType"),
+    t("structureEditor.length"),
+    t("structureEditor.nullable"),
+    t("structureEditor.primaryKey"),
+    t("structureEditor.defaultValue"),
+    t("structureEditor.comment"),
+  ];
+  if (showExtendedProperties.value) {
+    labels.push(t("structureEditor.extendedProperties"));
+  }
+  labels.push(t("structureEditor.actions"));
+  return labels;
+});
 const indexColLabels = computed(() => [
   t("structureEditor.indexName"),
   t("structureEditor.indexColumns"),
@@ -252,7 +263,7 @@ async function loadStructure(silent = false) {
       api.listForeignKeys(props.connectionId, props.database, targetSchema.value, props.tableName).catch(() => []),
       api.listTriggers(props.connectionId, props.database, targetSchema.value, props.tableName).catch(() => []),
     ]);
-    columns.value = createColumnDrafts(nextColumns);
+    columns.value = createColumnDrafts(nextColumns, databaseType.value);
     indexes.value = createIndexDrafts(nextIndexes);
     foreignKeys.value = nextForeignKeys;
     triggers.value = nextTriggers;
@@ -284,6 +295,7 @@ async function addColumn() {
     defaultValue: "",
     comment: "",
     isPrimaryKey: false,
+    extra: {},
     markedForDrop: false,
   });
   await nextTick();
@@ -691,6 +703,106 @@ watch(
                           />
                         </PopoverContent>
                       </Popover>
+                    </div>
+                  </td>
+                  <td v-if="showExtendedProperties" class="border-b border-r px-1.5 py-1">
+                    <div class="flex items-center gap-2">
+                      <!-- MySQL: AUTO_INCREMENT + ON UPDATE CURRENT_TIMESTAMP -->
+                      <template v-if="databaseType === 'mysql'">
+                        <label class="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                          <input v-model="column.extra.autoIncrement" type="checkbox" class="h-3.5 w-3.5" />
+                          {{ t("structureEditor.autoIncrement") }}
+                        </label>
+                        <label class="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                          <input v-model="column.extra.onUpdateCurrentTimestamp" type="checkbox" class="h-3.5 w-3.5" />
+                          {{ t("structureEditor.onUpdateCurrentTimestamp") }}
+                        </label>
+                      </template>
+                      <!-- PostgreSQL: IDENTITY -->
+                      <template v-else-if="databaseType === 'postgres'">
+                        <select
+                          :value="column.extra.identity?.generation ?? ''"
+                          class="h-6 rounded border bg-background px-1 text-[11px]"
+                          @change="
+                            (e) => {
+                              const v = (e.target as HTMLSelectElement).value;
+                              if (v) {
+                                column.extra.identity = {
+                                  ...column.extra.identity,
+                                  generation: v as 'BY DEFAULT' | 'ALWAYS',
+                                };
+                              } else {
+                                column.extra.identity = undefined;
+                              }
+                            }
+                          "
+                        >
+                          <option value="">{{ t("structureEditor.no") }}</option>
+                          <option value="BY DEFAULT">BY DEFAULT</option>
+                          <option value="ALWAYS">ALWAYS</option>
+                        </select>
+                        <template v-if="column.extra.identity?.generation">
+                          <Input
+                            :model-value="column.extra.identity.seed?.toString() ?? ''"
+                            type="number"
+                            class="h-6 w-14 text-[10px]"
+                            :placeholder="t('structureEditor.identitySeed')"
+                            @update:model-value="
+                              (v) => {
+                                if (column.extra.identity) {
+                                  column.extra.identity.seed = v ? Number(v) : undefined;
+                                }
+                              }
+                            "
+                          />
+                          <Input
+                            :model-value="column.extra.identity.increment?.toString() ?? ''"
+                            type="number"
+                            class="h-6 w-14 text-[10px]"
+                            :placeholder="t('structureEditor.identityIncrement')"
+                            @update:model-value="
+                              (v) => {
+                                if (column.extra.identity) {
+                                  column.extra.identity.increment = v ? Number(v) : undefined;
+                                }
+                              }
+                            "
+                          />
+                        </template>
+                      </template>
+                      <!-- SQL Server: IDENTITY -->
+                      <template v-else-if="databaseType === 'sqlserver'">
+                        <label class="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                          <input v-model="column.extra.autoIncrement" type="checkbox" class="h-3.5 w-3.5" />
+                          {{ t("structureEditor.identity") }}
+                        </label>
+                        <template v-if="column.extra.autoIncrement">
+                          <Input
+                            :model-value="column.extra.identity?.seed?.toString() ?? '1'"
+                            type="number"
+                            class="h-6 w-14 text-[10px]"
+                            :placeholder="t('structureEditor.identitySeed')"
+                            @update:model-value="
+                              (v) => {
+                                if (!column.extra.identity) column.extra.identity = {};
+                                column.extra.identity.seed = v ? Number(v) : undefined;
+                              }
+                            "
+                          />
+                          <Input
+                            :model-value="column.extra.identity?.increment?.toString() ?? '1'"
+                            type="number"
+                            class="h-6 w-14 text-[10px]"
+                            :placeholder="t('structureEditor.identityIncrement')"
+                            @update:model-value="
+                              (v) => {
+                                if (!column.extra.identity) column.extra.identity = {};
+                                column.extra.identity.increment = v ? Number(v) : undefined;
+                              }
+                            "
+                          />
+                        </template>
+                      </template>
                     </div>
                   </td>
                   <td class="border-b px-1.5 py-1">

@@ -1012,6 +1012,13 @@ export default {
     apply: "Apply Changes",
     ready: "Ready",
     saved: "Table structure updated",
+    extendedProperties: "Extended",
+    autoIncrement: "Auto Increment",
+    onUpdateCurrentTimestamp: "Auto Update Time",
+    identity: "Identity",
+    identityGeneration: "Generation",
+    identitySeed: "Seed",
+    identityIncrement: "Increment",
   },
   diagram: {
     title: "Relationship Diagram",

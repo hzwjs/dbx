@@ -1,5 +1,5 @@
 import type { ColumnInfo, DatabaseType, IndexInfo } from "../types/database.ts";
-import type { EditableStructureColumn, EditableStructureIndex } from "./tableStructureEditorSql.ts";
+import type { ColumnExtra, EditableStructureColumn, EditableStructureIndex } from "./tableStructureEditorSql.ts";
 
 export const DATA_TYPE_OPTIONS: Record<string, string[]> = {
   mysql: [
@@ -260,7 +260,36 @@ export const DEFAULT_TYPE_LENGTHS: Record<string, string> = {
   year: "4",
 };
 
-export function createColumnDrafts(columns: ColumnInfo[]): EditableStructureColumn[] {
+export function parseExtraToColumnExtra(extra: string | null | undefined, databaseType?: DatabaseType): ColumnExtra {
+  const result: ColumnExtra = {};
+  if (!extra) return result;
+  const lower = extra.toLowerCase().trim();
+  if (!lower) return result;
+
+  if (databaseType === "mysql") {
+    if (lower.includes("auto_increment")) {
+      result.autoIncrement = true;
+    }
+    if (lower.includes("on update current_timestamp")) {
+      result.onUpdateCurrentTimestamp = true;
+    }
+  } else if (databaseType === "postgres") {
+    const identityMatch = lower.match(/generated\s+(by\s+default|always)\s+as\s+identity/i);
+    if (identityMatch) {
+      result.identity = {
+        generation: identityMatch[1].toUpperCase() === "BY DEFAULT" ? "BY DEFAULT" : "ALWAYS",
+      };
+    }
+  } else if (databaseType === "sqlserver") {
+    if (lower.includes("identity")) {
+      result.autoIncrement = true;
+    }
+  }
+
+  return result;
+}
+
+export function createColumnDrafts(columns: ColumnInfo[], databaseType?: DatabaseType): EditableStructureColumn[] {
   return columns.map((column, index) => ({
     id: `existing:${column.name}`,
     name: column.name,
@@ -269,6 +298,7 @@ export function createColumnDrafts(columns: ColumnInfo[]): EditableStructureColu
     defaultValue: column.column_default ?? "",
     comment: column.comment ?? "",
     isPrimaryKey: column.is_primary_key,
+    extra: parseExtraToColumnExtra(column.extra, databaseType),
     original: column,
     originalPosition: index,
     markedForDrop: false,
