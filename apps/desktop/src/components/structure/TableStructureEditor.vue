@@ -42,6 +42,7 @@ import {
   createColumnDrafts,
   createIndexDrafts,
   DATA_TYPE_OPTIONS,
+  getDefaultLengthForType,
   splitDataType,
   toColumnNames,
 } from "@/lib/tableStructureEditorState";
@@ -574,7 +575,7 @@ watch(
                           (column.dataType = combineDataTypeForDatabase(
                             databaseType,
                             v,
-                            splitDataType(column.dataType).params,
+                            getDefaultLengthForType(databaseType, v),
                           ))
                       "
                     />

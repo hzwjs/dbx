@@ -230,6 +230,36 @@ export const DATA_TYPE_OPTIONS: Record<string, string[]> = {
   ],
 };
 
+export const DEFAULT_TYPE_LENGTHS: Record<string, string> = {
+  tinyint: "4",
+  smallint: "6",
+  mediumint: "9",
+  int: "11",
+  integer: "11",
+  int4: "11",
+  bigint: "20",
+  int8: "20",
+  float: "10,2",
+  real: "10,2",
+  "double precision": "10,2",
+  double: "10,2",
+  decimal: "10,0",
+  numeric: "10,0",
+  number: "10,0",
+  char: "1",
+  character: "1",
+  varchar: "255",
+  "character varying": "255",
+  varchar2: "255",
+  nvarchar2: "255",
+  nvarchar: "255",
+  nchar: "1",
+  varbinary: "255",
+  binary: "1",
+  bit: "1",
+  year: "4",
+};
+
 export function createColumnDrafts(columns: ColumnInfo[]): EditableStructureColumn[] {
   return columns.map((column, index) => ({
     id: `existing:${column.name}`,
@@ -333,6 +363,11 @@ function isValidTemporalPrecision(dbType: DatabaseType | undefined, params: stri
   const value = Number(params);
   const max = dbType === "oracle" || dbType === "dameng" || dbType === "oceanbase-oracle" ? 9 : 6;
   return Number.isInteger(value) && value >= 0 && value <= max && String(value) === params;
+}
+
+export function getDefaultLengthForType(_dbType: DatabaseType | undefined, baseType: string): string {
+  const key = baseType.trim().toLowerCase();
+  return DEFAULT_TYPE_LENGTHS[key] ?? "";
 }
 
 export function buildStructureTargetLabel(
