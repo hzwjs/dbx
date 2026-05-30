@@ -60,8 +60,10 @@ import { canTreeNodeShowExpander, treeItemPaddingLeft } from "@/lib/sidebarTreeI
 import { buildTableSelectSql } from "@/lib/tableSelectSql";
 import {
   DBX_TABLE_REFERENCE_MIME,
+  clearActiveTableReferencePayload,
   createTableReferencePayload,
   serializeTableReferencePayload,
+  setActiveTableReferencePayload,
   tableReferenceInsertText,
 } from "@/lib/queryEditorTableDrop";
 import { editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/tableEditing";
@@ -1803,8 +1805,10 @@ const canDragTableReference = computed(
     !props.dragDisabled &&
     (props.node.type === "table" || props.node.type === "view") &&
     !!props.node.connectionId &&
-    !!props.node.database,
+    props.node.database != null,
 );
+
+let draggingTableReferencePayload: ReturnType<typeof createTableReferencePayload> = null;
 
 function onTableReferenceDragStart(event: DragEvent) {
   if (!canDragTableReference.value) return;
@@ -1815,11 +1819,20 @@ function onTableReferenceDragStart(event: DragEvent) {
     tableName: props.node.label,
     databaseType: currentDatabaseType(),
   });
-  if (!payload || !event.dataTransfer) return;
+  if (!payload) return;
+  draggingTableReferencePayload = payload;
+  setActiveTableReferencePayload(payload);
   const insertText = tableReferenceInsertText(payload, currentDatabaseType());
-  event.dataTransfer.effectAllowed = "copy";
-  event.dataTransfer.setData(DBX_TABLE_REFERENCE_MIME, serializeTableReferencePayload(payload));
-  event.dataTransfer.setData("text/plain", insertText);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData(DBX_TABLE_REFERENCE_MIME, serializeTableReferencePayload(payload));
+    event.dataTransfer.setData("text/plain", insertText);
+  }
+}
+
+function onTableReferenceDragEnd() {
+  clearActiveTableReferencePayload(draggingTableReferencePayload);
+  draggingTableReferencePayload = null;
 }
 
 // ---- CustomContextMenu ----
@@ -2147,6 +2160,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
         @mousemove="isDropTarget ? updateTarget($event, node.id, node.type) : undefined"
         @mouseleave="clearTarget(node.id)"
         @dragstart="onTableReferenceDragStart"
+        @dragend="onTableReferenceDragEnd"
       >
         <div
           v-if="showDropBefore"

@@ -12,6 +12,8 @@ export interface QueryEditorTableReferencePayload {
   databaseType?: DatabaseType;
 }
 
+let activeTableReferencePayload: QueryEditorTableReferencePayload | null = null;
+
 export function createTableReferencePayload(options: {
   connectionId?: string;
   database?: string;
@@ -19,15 +21,16 @@ export function createTableReferencePayload(options: {
   tableName?: string;
   databaseType?: DatabaseType;
 }): QueryEditorTableReferencePayload | null {
-  if (!options.connectionId || !options.database || !options.tableName) return null;
-  return {
+  if (!options.connectionId || options.database == null || !options.tableName) return null;
+  const payload: QueryEditorTableReferencePayload = {
     kind: "dbx-table-reference",
     connectionId: options.connectionId,
     database: options.database,
-    schema: options.schema,
     tableName: options.tableName,
-    databaseType: options.databaseType,
   };
+  if (options.schema) payload.schema = options.schema;
+  if (options.databaseType) payload.databaseType = options.databaseType;
+  return payload;
 }
 
 export function serializeTableReferencePayload(payload: QueryEditorTableReferencePayload): string {
@@ -44,19 +47,19 @@ export function parseTableReferencePayload(value: string | undefined | null): Qu
       typeof parsed.database !== "string" ||
       typeof parsed.tableName !== "string" ||
       !parsed.connectionId ||
-      !parsed.database ||
       !parsed.tableName
     ) {
       return null;
     }
-    return {
+    const payload: QueryEditorTableReferencePayload = {
       kind: "dbx-table-reference",
       connectionId: parsed.connectionId,
       database: parsed.database,
-      schema: typeof parsed.schema === "string" && parsed.schema ? parsed.schema : undefined,
       tableName: parsed.tableName,
-      databaseType: parsed.databaseType,
     };
+    if (typeof parsed.schema === "string" && parsed.schema) payload.schema = parsed.schema;
+    if (parsed.databaseType) payload.databaseType = parsed.databaseType;
+    return payload;
   } catch {
     return null;
   }
@@ -68,6 +71,20 @@ export function hasTableReferencePayloadType(types: Iterable<string> | undefined
     if (type === DBX_TABLE_REFERENCE_MIME) return true;
   }
   return false;
+}
+
+export function setActiveTableReferencePayload(payload: QueryEditorTableReferencePayload | null) {
+  activeTableReferencePayload = payload;
+}
+
+export function activeTableReferencePayloadValue(): QueryEditorTableReferencePayload | null {
+  return activeTableReferencePayload;
+}
+
+export function clearActiveTableReferencePayload(payload?: QueryEditorTableReferencePayload | null) {
+  if (!payload || activeTableReferencePayload === payload) {
+    activeTableReferencePayload = null;
+  }
 }
 
 export function tableReferenceInsertText(

@@ -26,6 +26,8 @@ import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigati
 import { lineColumnToOffset, parseSqlErrorLocation } from "@/lib/sqlDiagnostics";
 import {
   DBX_TABLE_REFERENCE_MIME,
+  activeTableReferencePayloadValue,
+  clearActiveTableReferencePayload,
   hasTableReferencePayloadType,
   parseTableReferencePayload,
   tableReferenceInsertText,
@@ -723,11 +725,14 @@ async function formatCurrentSql() {
 }
 
 function droppedTableReference(event: DragEvent) {
-  return parseTableReferencePayload(event.dataTransfer?.getData(DBX_TABLE_REFERENCE_MIME));
+  return (
+    activeTableReferencePayloadValue() ??
+    parseTableReferencePayload(event.dataTransfer?.getData(DBX_TABLE_REFERENCE_MIME))
+  );
 }
 
 function hasDroppedTableReference(event: DragEvent) {
-  return hasTableReferencePayloadType(event.dataTransfer?.types);
+  return !!activeTableReferencePayloadValue() || hasTableReferencePayloadType(event.dataTransfer?.types);
 }
 
 function insertDroppedTableReference(currentView: EditorViewType, event: DragEvent): boolean {
@@ -749,6 +754,7 @@ function insertDroppedTableReference(currentView: EditorViewType, event: DragEve
     scrollIntoView: true,
     userEvent: "input.drop",
   });
+  clearActiveTableReferencePayload(payload);
   currentView.focus();
   return true;
 }
