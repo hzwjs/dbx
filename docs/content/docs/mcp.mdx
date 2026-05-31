@@ -218,7 +218,7 @@ MCP query execution is intentionally conservative:
 | Rule | Default |
 |---|---|
 | Empty or unrecognized SQL | Blocked |
-| More than one SQL statement | Blocked |
+| Multiple SQL statements | Allowed; each statement is checked and executed separately |
 | Non-read SQL | Blocked unless writes are explicitly allowed |
 | `DROP`, `TRUNCATE`, or `ALTER` | Blocked unless dangerous SQL is explicitly allowed |
 | `UPDATE` or `DELETE` without `WHERE` when writes are allowed | Blocked |

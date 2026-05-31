@@ -1,5 +1,7 @@
 import type { ObjectInfo, TableInfo, TreeNode, TreeNodeType } from "@/types/database";
 
+const databaseObjectNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
 export function normalizeDatabaseObjectName(name: string): string {
   return name.trim();
 }
@@ -102,15 +104,120 @@ function objectIdentityKey(objectType: string, schema: string | undefined, name:
   return `${objectType}\0${(schema || "").toLowerCase()}\0${name.toLowerCase()}`;
 }
 
+type PrefixSortInfo = {
+  rootName: string;
+  leadingSegments: number;
+};
+
+function nameSegments(name: string): string[] {
+  return name.toLowerCase().split("_").filter(Boolean);
+}
+
+function findSubsequence(haystack: readonly string[], needle: readonly string[]): number {
+  if (!needle.length || needle.length > haystack.length) return -1;
+
+  for (let start = 0; start <= haystack.length - needle.length; start += 1) {
+    let matched = true;
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      if (haystack[start + offset] !== needle[offset]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return start;
+  }
+
+  return -1;
+}
+
+function buildPrefixSortIndex(names: readonly string[]): Map<string, PrefixSortInfo> {
+  const segmentsByName = new Map<string, string[]>();
+  const nameBySegmentKey = new Map<string, string>();
+  for (const name of names) {
+    const normalized = name.toLowerCase();
+    if (segmentsByName.has(normalized)) continue;
+
+    const segments = nameSegments(name);
+    segmentsByName.set(normalized, segments);
+    const segmentKey = segments.join("_");
+    if (!nameBySegmentKey.has(segmentKey)) nameBySegmentKey.set(segmentKey, normalized);
+  }
+
+  const resolved = new Map<string, PrefixSortInfo>();
+
+  const resolve = (name: string): PrefixSortInfo => {
+    const cached = resolved.get(name);
+    if (cached) return cached;
+
+    const segments = segmentsByName.get(name) ?? [];
+    let bestAnchor: { name: string; segmentCount: number; start: number } | undefined;
+
+    for (let segmentCount = segments.length - 1; segmentCount > 0 && !bestAnchor; segmentCount -= 1) {
+      for (let start = 0; start <= segments.length - segmentCount; start += 1) {
+        const candidateName = nameBySegmentKey.get(segments.slice(start, start + segmentCount).join("_"));
+        if (!candidateName || candidateName === name) continue;
+        bestAnchor = { name: candidateName, segmentCount, start };
+        break;
+      }
+    }
+
+    if (!bestAnchor) {
+      const info = { rootName: name, leadingSegments: 0 };
+      resolved.set(name, info);
+      return info;
+    }
+
+    const anchor = resolve(bestAnchor.name);
+    const rootSegments = segmentsByName.get(anchor.rootName) ?? [];
+    const rootStart = findSubsequence(segments, rootSegments);
+    const info = {
+      rootName: anchor.rootName,
+      leadingSegments: rootStart >= 0 ? rootStart : bestAnchor.start + anchor.leadingSegments,
+    };
+    resolved.set(name, info);
+    return info;
+  };
+
+  for (const name of segmentsByName.keys()) resolve(name);
+  return resolved;
+}
+
+function comparePrefixPriorityNames(left: string, right: string, index: ReadonlyMap<string, PrefixSortInfo>): number {
+  const leftName = left.toLowerCase();
+  const rightName = right.toLowerCase();
+  const leftInfo = index.get(leftName) ?? { rootName: leftName, leadingSegments: 0 };
+  const rightInfo = index.get(rightName) ?? { rootName: rightName, leadingSegments: 0 };
+
+  const rootCompared = databaseObjectNameCollator.compare(leftInfo.rootName, rightInfo.rootName);
+  if (rootCompared !== 0) return rootCompared;
+
+  if (leftInfo.leadingSegments !== rightInfo.leadingSegments) {
+    return leftInfo.leadingSegments - rightInfo.leadingSegments;
+  }
+
+  return databaseObjectNameCollator.compare(left, right);
+}
+
+export function createDatabaseObjectNameComparator(names: readonly string[]): (left: string, right: string) => number {
+  const index = buildPrefixSortIndex(names);
+  return (left, right) => comparePrefixPriorityNames(left, right, index);
+}
+
+export function sortDatabaseObjectsByPrefixPriority<T>(items: readonly T[], getName: (item: T) => string): T[] {
+  const compareNames = createDatabaseObjectNameComparator(items.map(getName));
+  return [...items].sort((left, right) => compareNames(getName(left), getName(right)));
+}
+
 function buildPartitionTree(entries: TableTreeEntry[], connectionId: string, database: string): TreeNode[] {
+  const orderedEntries = sortDatabaseObjectsByPrefixPriority(entries, (entry) => entry.node.label);
   const byKey = new Map<string, TableTreeEntry>();
-  for (const entry of entries) {
+  for (const entry of orderedEntries) {
     byKey.set(entry.key, entry);
   }
 
   const childrenByParent = new Map<string, TableTreeEntry[]>();
   const childKeys = new Set<string>();
-  for (const entry of entries) {
+  for (const entry of orderedEntries) {
     if (entry.objectType !== "TABLE" || !entry.parentName) continue;
     const parentSchema = entry.parentSchema || entry.schema;
     const parentKey = objectIdentityKey("TABLE", parentSchema, entry.parentName);
@@ -143,7 +250,7 @@ function buildPartitionTree(entries: TableTreeEntry[], connectionId: string, dat
     return entry.node;
   };
 
-  return entries.filter((entry) => !childKeys.has(entry.key)).map(materialize);
+  return orderedEntries.filter((entry) => !childKeys.has(entry.key)).map(materialize);
 }
 
 function partitionGroupChildren(node: TreeNode): TreeNode[] {
@@ -244,7 +351,10 @@ export function buildSimpleObjectTreeNodes({
     }
   }
 
-  return [...buildPartitionTree(tableEntries, connectionId, database), ...viewNodes];
+  return [
+    ...buildPartitionTree(tableEntries, connectionId, database),
+    ...sortDatabaseObjectsByPrefixPriority(viewNodes, (node) => node.label),
+  ];
 }
 
 function normalizeObjectType(type: string): "TABLE" | "VIEW" | "PROCEDURE" | "FUNCTION" {
@@ -336,7 +446,7 @@ export function buildGroupedObjectTreeNodes({
           objects: items,
           objectType: def.objectType as "TABLE" | "VIEW",
         })
-      : items.map((obj) => {
+      : sortDatabaseObjectsByPrefixPriority(items, (obj) => obj.name).map((obj) => {
           const childSchema = obj.schema ? normalizeDatabaseObjectName(obj.schema) : schema;
           return {
             id: `${nodeId}:${def.key}:${childSchema ? `${childSchema}:` : ""}${obj.name}`,

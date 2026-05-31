@@ -92,7 +92,7 @@ See the [DBX CLI README](../cli/README.md) for command details.
 
 ## SQL Safety
 
-`dbx_execute_query` is read-only by default. To allow write statements such as `INSERT` or `UPDATE`, set:
+`dbx_execute_query` accepts multiple SQL statements and executes them one at a time after checking each statement. It is read-only by default. To allow write statements such as `INSERT` or `UPDATE`, set:
 
 ```bash
 DBX_MCP_ALLOW_WRITES=1
@@ -213,7 +213,7 @@ dbx query local "select 1" --json
 
 ### SQL 安全
 
-`dbx_execute_query` 默认只读。若要允许 `INSERT`、`UPDATE` 等写操作，设置：
+`dbx_execute_query` 支持多条 SQL 语句，会逐条完成安全检查并依次执行。默认只读。若要允许 `INSERT`、`UPDATE` 等写操作，设置：
 
 ```bash
 DBX_MCP_ALLOW_WRITES=1

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 
 pub struct LoginRateLimit {
     pub fail_count: u32,
@@ -15,6 +16,7 @@ pub struct WebState {
     pub password_hash: RwLock<Option<String>>,
     pub sessions: RwLock<HashSet<String>>,
     pub sse_channels: RwLock<HashMap<String, broadcast::Sender<String>>>,
+    pub sql_file_executions: RwLock<HashMap<String, CancellationToken>>,
     pub login_rate_limit: Mutex<LoginRateLimit>,
 }
 

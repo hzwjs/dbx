@@ -8,7 +8,7 @@ import {
 
 type CellValue = string | number | boolean | null;
 
-const ROW_NUM_WIDTH = 48;
+export const DATA_GRID_ROW_NUM_WIDTH = 48;
 
 export interface UseDataGridColumnResizeOptions {
   columns: ComputedRef<string[]>;
@@ -80,21 +80,21 @@ export function useDataGridColumnResize(options: UseDataGridColumnResizeOptions)
     const widths = columnWidths.value;
     if (widths.length === 0) return widths;
 
-    const extraWidth = Math.max(0, gridWidth.value - ROW_NUM_WIDTH - baseTotalWidth.value);
+    const extraWidth = Math.max(0, gridWidth.value - DATA_GRID_ROW_NUM_WIDTH - baseTotalWidth.value);
     if (extraWidth === 0) return widths;
 
     const extraPerColumn = extraWidth / widths.length;
     return widths.map((width) => width + extraPerColumn);
   });
 
-  const totalWidth = computed(() => renderedColumnWidths.value.reduce((a, b) => a + b, 0) + ROW_NUM_WIDTH);
+  const totalWidth = computed(() => renderedColumnWidths.value.reduce((a, b) => a + b, 0) + DATA_GRID_ROW_NUM_WIDTH);
 
   const columnVars = computed(() => {
     const vars: Record<string, string> = {};
     renderedColumnWidths.value.forEach((w, i) => {
       vars[`--col-w-${i}`] = `${w}px`;
     });
-    vars["--row-num-w"] = `${ROW_NUM_WIDTH}px`;
+    vars["--row-num-w"] = `${DATA_GRID_ROW_NUM_WIDTH}px`;
     vars["--total-w"] = `${totalWidth.value}px`;
     return vars;
   });

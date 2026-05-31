@@ -29,3 +29,26 @@ test("blocks update without where when writes are enabled", () => {
   assert.match(decision.reason ?? "", /WHERE/i);
 });
 
+test("blocks multiple SQL statements unless explicitly allowed", () => {
+  const decision = evaluateSqlSafety("select 1; select 2");
+
+  assert.equal(decision.allowed, false);
+  assert.match(decision.reason ?? "", /Only one SQL statement/);
+});
+
+test("allows multiple read-only SQL statements when enabled", () => {
+  const decision = evaluateSqlSafety("select 1; show tables", { allowMultipleStatements: true });
+
+  assert.equal(decision.allowed, true);
+});
+
+test("checks every statement in a multi-statement SQL string", () => {
+  const decision = evaluateSqlSafety("select 1; delete from users", {
+    allowMultipleStatements: true,
+    allowWrites: true,
+  });
+
+  assert.equal(decision.allowed, false);
+  assert.match(decision.reason ?? "", /Statement 2/i);
+  assert.match(decision.reason ?? "", /WHERE/i);
+});

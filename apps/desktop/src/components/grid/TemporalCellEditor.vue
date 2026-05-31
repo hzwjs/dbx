@@ -110,6 +110,16 @@ function stepTime(part: "hour" | "minute" | "second", delta: number) {
   updateTime(part, (current + delta + max + 1) % (max + 1));
 }
 
+function flushInputValue(target: EventTarget | null) {
+  if (!(target instanceof HTMLInputElement)) return;
+  const part = target.dataset.temporalPart;
+  if (part === "year" || part === "month" || part === "day") {
+    updateDate(part, target.value);
+  } else if (part === "hour" || part === "minute" || part === "second") {
+    updateTime(part, target.value);
+  }
+}
+
 function setNull() {
   setModelValue("NULL");
 }
@@ -144,6 +154,7 @@ function finishCancel() {
 function onKeydown(event: KeyboardEvent) {
   if (event.key === "Enter") {
     event.preventDefault();
+    flushInputValue(event.target);
     finishCommit();
   } else if (event.key === "Escape") {
     event.preventDefault();
@@ -208,6 +219,7 @@ function twoDigit(value: string | number): string {
         >
           <input
             :value="dateParts.year"
+            data-temporal-part="year"
             inputmode="numeric"
             class="min-w-0 bg-transparent px-1 text-center text-[13px] tabular-nums outline-none"
             @change="updateDateFromInput('year', $event)"
@@ -231,6 +243,7 @@ function twoDigit(value: string | number): string {
         >
           <input
             :value="twoDigit(dateParts.month)"
+            data-temporal-part="month"
             inputmode="numeric"
             class="min-w-0 bg-transparent px-1 text-center text-[13px] tabular-nums outline-none"
             @change="updateDateFromInput('month', $event)"
@@ -254,6 +267,7 @@ function twoDigit(value: string | number): string {
         >
           <input
             :value="twoDigit(dateParts.day)"
+            data-temporal-part="day"
             inputmode="numeric"
             class="min-w-0 bg-transparent px-1 text-center text-[13px] tabular-nums outline-none"
             @change="updateDateFromInput('day', $event)"
@@ -279,6 +293,7 @@ function twoDigit(value: string | number): string {
         >
           <input
             :value="twoDigit(timeParts.hour)"
+            data-temporal-part="hour"
             inputmode="numeric"
             class="min-w-0 bg-transparent px-1 text-center text-[13px] tabular-nums outline-none"
             @change="updateTimeFromInput('hour', $event)"
@@ -302,6 +317,7 @@ function twoDigit(value: string | number): string {
         >
           <input
             :value="twoDigit(timeParts.minute)"
+            data-temporal-part="minute"
             inputmode="numeric"
             class="min-w-0 bg-transparent px-1 text-center text-[13px] tabular-nums outline-none"
             @change="updateTimeFromInput('minute', $event)"
@@ -329,6 +345,7 @@ function twoDigit(value: string | number): string {
         >
           <input
             :value="twoDigit(timeParts.second)"
+            data-temporal-part="second"
             inputmode="numeric"
             class="min-w-0 bg-transparent px-1 text-center text-[13px] tabular-nums outline-none"
             @change="updateTimeFromInput('second', $event)"

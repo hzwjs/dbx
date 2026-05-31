@@ -74,6 +74,25 @@ test("object browser rows preserve table timestamps and sort recent updates firs
   assert.equal(formatObjectBrowserTimestamp(rows[0].created_at), "2026-05-20 09:30:00");
 });
 
+test("object browser name sort keeps base-prefixed tables before prefixed variants", () => {
+  const rows = buildObjectBrowserRows({
+    objects: [
+      { name: "chat_staff", object_type: "TABLE", schema: "public" },
+      { name: "chat_staff_his", object_type: "TABLE", schema: "public" },
+      { name: "staff", object_type: "TABLE", schema: "public" },
+      { name: "staff_his", object_type: "TABLE", schema: "public" },
+    ],
+    database: "app",
+    fallbackSchema: "public",
+    needsSchema: true,
+  });
+
+  assert.deepEqual(
+    sortObjectBrowserRows(rows, "name", "asc").map((row) => row.name),
+    ["staff", "staff_his", "chat_staff", "chat_staff_his"],
+  );
+});
+
 test("object browser rows mark partition-like tables when their parent table exists", () => {
   const rows = buildObjectBrowserRows({
     objects: [

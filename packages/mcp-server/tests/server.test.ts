@@ -74,6 +74,48 @@ test("execute query scopes the connection to the requested database", async () =
   assert.equal(usedDatabase, "stores_demo");
 });
 
+test("execute query runs safe multi-statement SQL one statement at a time", async () => {
+  const executed: string[] = [];
+  const scopedBackend: Backend = {
+    ...backend,
+    executeQuery: async (_config, sql) => {
+      executed.push(sql);
+      return { columns: ["value"], rows: [{ value: executed.length }], row_count: 1 };
+    },
+  };
+  const server = createDbxMcpServer(scopedBackend, { isWebMode: true });
+
+  const result = await (server as any)._registeredTools.dbx_execute_query.handler({
+    connection_name: "local",
+    sql: "select 1; select 2;",
+  });
+
+  assert.deepEqual(executed, ["select 1", "select 2"]);
+  assert.match(result.content[0].text, /Statement 1/);
+  assert.match(result.content[0].text, /Statement 2/);
+});
+
+test("execute query reports the blocked statement number for unsafe multi-statement SQL", async () => {
+  const oldAllowWrites = process.env.DBX_MCP_ALLOW_WRITES;
+  process.env.DBX_MCP_ALLOW_WRITES = "1";
+  const server = createDbxMcpServer(backend, { isWebMode: true });
+
+  try {
+    const result = await (server as any)._registeredTools.dbx_execute_query.handler({
+      connection_name: "local",
+      sql: "select 1; delete from users;",
+    });
+
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /SQL_BLOCKED:/);
+    assert.match(result.content[0].text, /Statement 2/);
+    assert.match(result.content[0].text, /WHERE/);
+  } finally {
+    if (oldAllowWrites === undefined) delete process.env.DBX_MCP_ALLOW_WRITES;
+    else process.env.DBX_MCP_ALLOW_WRITES = oldAllowWrites;
+  }
+});
+
 test("mongodb list tables returns collections from the selected database", async () => {
   let usedDatabase = "";
   const mongoConnection: ConnectionConfig = { ...connection, db_type: "mongodb", database: "admin" };

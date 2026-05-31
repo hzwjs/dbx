@@ -2,7 +2,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
   buildSchemaContext,
@@ -11,13 +10,16 @@ import {
   evaluateSqlSafety,
   formatCell,
   formatSchemaContext,
+  isMainModule,
   mdTable,
   notifyReload,
   parseMongoAggregateCommand,
   postBridge,
   sqlSafetyFromEnv,
+  splitSqlStatements,
   type Backend,
   type ConnectionConfig,
+  type QueryResult,
 } from "@dbx-app/node-core";
 
 const require = createRequire(import.meta.url);
@@ -34,6 +36,13 @@ function toolError(code: string, message: string) {
 
 function withDatabase(config: ConnectionConfig, database?: string): ConnectionConfig {
   return database === undefined ? config : { ...config, database };
+}
+
+function formatQueryToolResult(result: QueryResult, title?: string) {
+  const prefix = title ? `${title}\n` : "";
+  if (result.columns.length === 0) return text(`${prefix}Query executed. ${result.row_count} row(s) affected.`);
+  const rows = result.rows.map((r) => result.columns.map((c) => formatCell(r[c])));
+  return text(`${prefix}${mdTable(result.columns, rows)}\n\n${result.row_count} row(s)`);
 }
 
 export const DBX_CONNECTION_TYPE_DESCRIPTION =
@@ -108,16 +117,19 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
       const config = await backend.findConnection(connection_name);
       if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
       if (config.db_type !== "mongodb") {
-        const safety = evaluateSqlSafety(sql, sqlSafetyFromEnv());
+        const safety = evaluateSqlSafety(sql, { ...sqlSafetyFromEnv(), allowMultipleStatements: true });
         if (!safety.allowed) return toolError("SQL_BLOCKED", safety.reason ?? "SQL blocked.");
       }
       // MongoDB shell commands don't fit the SQL safety evaluator; the backend
       // (node-core executeQuery) applies command-aware read/write gating.
       try {
-        const result = await backend.executeQuery(withDatabase(config, database), sql);
-        if (result.columns.length === 0) return text(`Query executed. ${result.row_count} row(s) affected.`);
-        const rows = result.rows.map((r) => result.columns.map((c) => formatCell(r[c])));
-        return text(`${mdTable(result.columns, rows)}\n\n${result.row_count} row(s)`);
+        const statements = config.db_type === "mongodb" ? [sql] : splitSqlStatements(sql);
+        const results = [];
+        for (const statement of statements) {
+          results.push(await backend.executeQuery(withDatabase(config, database), statement));
+        }
+        if (results.length === 1) return formatQueryToolResult(results[0]);
+        return text(results.map((result, index) => formatQueryToolResult(result, `Statement ${index + 1}`).content[0].text).join("\n\n"));
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         return toolError("QUERY_ERROR", msg);
@@ -235,7 +247,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
             if (!safety.allowed) return toolError("SQL_BLOCKED", safety.reason ?? "Query blocked.");
           }
         } else {
-          const safety = evaluateSqlSafety(sql, safetyOptions);
+          const safety = evaluateSqlSafety(sql, { ...safetyOptions, allowMultipleStatements: true });
           if (!safety.allowed) return toolError("SQL_BLOCKED", safety.reason ?? "SQL blocked.");
         }
         // MongoDB shell commands bypass the SQL safety evaluator; pass MCP
@@ -272,7 +284,7 @@ async function main() {
   await server.connect(transport);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((e) => {
     console.error("MCP Server failed to start:", e);
     process.exit(1);

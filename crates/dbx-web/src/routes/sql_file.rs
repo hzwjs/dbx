@@ -4,29 +4,23 @@ use std::sync::Arc;
 use axum::extract::{Multipart, Path as AxumPath, State};
 use axum::response::sse::{Event, Sse};
 use axum::Json;
-use dbx_core::query;
 use dbx_core::sql;
-use dbx_core::sql::SqlFileStatementAction;
+use dbx_core::sql::{SqlFileProgress, SqlFileRequest, SqlFileStatus};
+use dbx_core::sql_file_import::{
+    execute_sql_file_content, sql_file_error_progress, sql_file_progress as build_sql_file_progress,
+};
 use futures::stream::Stream;
 use serde::Deserialize;
+use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::AppError;
 use crate::state::WebState;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SqlFileExecuteRequest {
-    pub execution_id: String,
-    pub connection_id: String,
-    pub database: String,
-    pub file_path: String,
-    pub continue_on_error: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SqlFileExecuteWrapper {
-    pub request: SqlFileExecuteRequest,
+    pub request: SqlFileRequest,
 }
 
 #[derive(Deserialize)]
@@ -70,49 +64,40 @@ pub async fn execute_sql_file(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let req = body.request;
     let execution_id = req.execution_id.clone();
+    let file_path = validated_uploaded_sql_path(&state.data_dir, &req.file_path)?;
+    let token = CancellationToken::new();
 
+    {
+        let mut executions = state.sql_file_executions.write().await;
+        if executions.contains_key(&execution_id) {
+            return Err(AppError(format!("SQL file execution '{execution_id}' already exists")));
+        }
+        executions.insert(execution_id.clone(), token.clone());
+    }
     let (tx, _) = tokio::sync::broadcast::channel::<String>(256);
     state.sse_channels.write().await.insert(execution_id.clone(), tx.clone());
 
     let app = state.app.clone();
     let state_clone = state.clone();
 
-    let file_path = validated_uploaded_sql_path(&state.data_dir, &req.file_path)?;
-
     tokio::spawn(async move {
+        let started_at = std::time::Instant::now();
         match std::fs::metadata(&file_path) {
             Ok(meta) if meta.len() > 200 * 1024 * 1024 => {
-                let progress = dbx_core::sql::SqlFileProgress {
-                    execution_id: req.execution_id.clone(),
-                    status: dbx_core::sql::SqlFileStatus::Error,
-                    statement_index: 0,
-                    success_count: 0,
-                    failure_count: 0,
-                    affected_rows: 0,
-                    elapsed_ms: 0,
-                    statement_summary: String::new(),
-                    error: Some(format!("File too large: {} bytes (max {} bytes)", meta.len(), 200 * 1024 * 1024)),
-                };
-                if let Ok(json) = serde_json::to_string(&progress) {
-                    let _ = tx.send(json);
-                }
+                send_sql_file_progress(
+                    &tx,
+                    sql_file_error_progress(
+                        &req.execution_id,
+                        started_at,
+                        format!("File too large: {} bytes (max {} bytes)", meta.len(), 200 * 1024 * 1024),
+                    ),
+                );
+                cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
                 return;
             }
             Err(e) => {
-                let progress = dbx_core::sql::SqlFileProgress {
-                    execution_id: req.execution_id.clone(),
-                    status: dbx_core::sql::SqlFileStatus::Error,
-                    statement_index: 0,
-                    success_count: 0,
-                    failure_count: 0,
-                    affected_rows: 0,
-                    elapsed_ms: 0,
-                    statement_summary: String::new(),
-                    error: Some(e.to_string()),
-                };
-                if let Ok(json) = serde_json::to_string(&progress) {
-                    let _ = tx.send(json);
-                }
+                send_sql_file_progress(&tx, sql_file_error_progress(&req.execution_id, started_at, e.to_string()));
+                cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
                 return;
             }
             _ => {}
@@ -124,167 +109,37 @@ pub async fn execute_sql_file(
         }) {
             Ok(content) => content,
             Err(e) => {
-                let progress = dbx_core::sql::SqlFileProgress {
-                    execution_id: req.execution_id.clone(),
-                    status: dbx_core::sql::SqlFileStatus::Error,
-                    statement_index: 0,
-                    success_count: 0,
-                    failure_count: 0,
-                    affected_rows: 0,
-                    elapsed_ms: 0,
-                    statement_summary: String::new(),
-                    error: Some(e.to_string()),
-                };
-                if let Ok(json) = serde_json::to_string(&progress) {
-                    let _ = tx.send(json);
-                }
+                send_sql_file_progress(&tx, sql_file_error_progress(&req.execution_id, started_at, e.to_string()));
+                cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
                 return;
             }
         };
 
-        // Send started
-        let started = dbx_core::sql::SqlFileProgress {
-            execution_id: req.execution_id.clone(),
-            status: dbx_core::sql::SqlFileStatus::Started,
-            statement_index: 0,
-            success_count: 0,
-            failure_count: 0,
-            affected_rows: 0,
-            elapsed_ms: 0,
-            statement_summary: String::new(),
-            error: None,
-        };
-        if let Ok(json) = serde_json::to_string(&started) {
-            let _ = tx.send(json);
-        }
+        send_sql_file_progress(
+            &tx,
+            build_sql_file_progress(&req.execution_id, SqlFileStatus::Started, 0, 0, 0, 0, started_at, "", None),
+        );
 
-        let import_target = {
-            let configs = app.configs.read().await;
-            configs.get(&req.connection_id).map(|config| (config.db_type, config.driver_profile.clone()))
-        };
-        let statements = import_target
-            .as_ref()
-            .map(|(db_type, _)| sql::split_sql_statements_for_database(&file_content, *db_type))
-            .unwrap_or_else(|| sql::split_sql_statements(&file_content));
-        let start = std::time::Instant::now();
-        let mut success_count = 0usize;
-        let mut failure_count = 0usize;
-        let mut total_affected: u64 = 0;
+        let _ = execute_sql_file_content(&app, &req, &file_content, token, started_at, |progress| {
+            send_sql_file_progress(&tx, progress);
+        })
+        .await;
 
-        for (i, stmt) in statements.iter().enumerate() {
-            let statement_action = import_target
-                .as_ref()
-                .map(|(db_type, driver_profile)| {
-                    sql::prepare_sql_file_statement(stmt, db_type, driver_profile.as_deref())
-                })
-                .unwrap_or_else(|| SqlFileStatementAction::Execute(stmt.to_string()));
-            let (stmt_to_execute, summary, should_execute) = match statement_action {
-                SqlFileStatementAction::Execute(statement) => {
-                    let summary = sql::statement_summary(&statement);
-                    (statement, summary, true)
-                }
-                SqlFileStatementAction::Skip => (String::new(), sql::statement_summary(stmt), false),
-            };
-
-            // Send running
-            let running = dbx_core::sql::SqlFileProgress {
-                execution_id: req.execution_id.clone(),
-                status: dbx_core::sql::SqlFileStatus::Running,
-                statement_index: i,
-                success_count,
-                failure_count,
-                affected_rows: total_affected,
-                elapsed_ms: start.elapsed().as_millis(),
-                statement_summary: summary.clone(),
-                error: None,
-            };
-            if let Ok(json) = serde_json::to_string(&running) {
-                let _ = tx.send(json);
-            }
-
-            if !should_execute {
-                success_count += 1;
-                let done = dbx_core::sql::SqlFileProgress {
-                    execution_id: req.execution_id.clone(),
-                    status: dbx_core::sql::SqlFileStatus::StatementDone,
-                    statement_index: i,
-                    success_count,
-                    failure_count,
-                    affected_rows: total_affected,
-                    elapsed_ms: start.elapsed().as_millis(),
-                    statement_summary: summary,
-                    error: None,
-                };
-                if let Ok(json) = serde_json::to_string(&done) {
-                    let _ = tx.send(json);
-                }
-                continue;
-            }
-
-            match query::execute_sql_statement(&app, &req.connection_id, &req.database, &stmt_to_execute, None, None)
-                .await
-            {
-                Ok(result) => {
-                    success_count += 1;
-                    total_affected += result.affected_rows;
-                    let done = dbx_core::sql::SqlFileProgress {
-                        execution_id: req.execution_id.clone(),
-                        status: dbx_core::sql::SqlFileStatus::StatementDone,
-                        statement_index: i,
-                        success_count,
-                        failure_count,
-                        affected_rows: total_affected,
-                        elapsed_ms: start.elapsed().as_millis(),
-                        statement_summary: summary,
-                        error: None,
-                    };
-                    if let Ok(json) = serde_json::to_string(&done) {
-                        let _ = tx.send(json);
-                    }
-                }
-                Err(e) => {
-                    failure_count += 1;
-                    let failed = dbx_core::sql::SqlFileProgress {
-                        execution_id: req.execution_id.clone(),
-                        status: dbx_core::sql::SqlFileStatus::StatementFailed,
-                        statement_index: i,
-                        success_count,
-                        failure_count,
-                        affected_rows: total_affected,
-                        elapsed_ms: start.elapsed().as_millis(),
-                        statement_summary: summary,
-                        error: Some(e),
-                    };
-                    if let Ok(json) = serde_json::to_string(&failed) {
-                        let _ = tx.send(json);
-                    }
-                    if !req.continue_on_error {
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Send final done
-        let final_done = dbx_core::sql::SqlFileProgress {
-            execution_id: req.execution_id.clone(),
-            status: dbx_core::sql::SqlFileStatus::Done,
-            statement_index: statements.len(),
-            success_count,
-            failure_count,
-            affected_rows: total_affected,
-            elapsed_ms: start.elapsed().as_millis(),
-            statement_summary: String::new(),
-            error: None,
-        };
-        if let Ok(json) = serde_json::to_string(&final_done) {
-            let _ = tx.send(json);
-        }
-
-        state_clone.remove_sse_channel(&req.execution_id).await;
+        cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
     });
 
     Ok(Json(serde_json::json!({ "executionId": execution_id })))
+}
+
+fn send_sql_file_progress(tx: &broadcast::Sender<String>, progress: SqlFileProgress) {
+    if let Ok(json) = serde_json::to_string(&progress) {
+        let _ = tx.send(json);
+    }
+}
+
+async fn cleanup_sql_file_execution(state: &WebState, execution_id: &str) {
+    state.remove_sse_channel(execution_id).await;
+    state.sql_file_executions.write().await.remove(execution_id);
 }
 
 fn safe_uploaded_sql_path(tmp_dir: &Path, file_name: &str) -> Result<PathBuf, AppError> {
@@ -325,9 +180,13 @@ pub async fn cancel_sql_file(
     State(state): State<Arc<WebState>>,
     Json(req): Json<CancelSqlFileRequest>,
 ) -> Json<serde_json::Value> {
-    // Remove the channel to stop the execution loop
-    state.sse_channels.write().await.remove(&req.execution_id);
-    Json(serde_json::json!({ "cancelled": true }))
+    let executions = state.sql_file_executions.read().await;
+    if let Some(token) = executions.get(&req.execution_id) {
+        token.cancel();
+        Json(serde_json::json!({ "cancelled": true }))
+    } else {
+        Json(serde_json::json!({ "cancelled": false }))
+    }
 }
 
 #[cfg(test)]

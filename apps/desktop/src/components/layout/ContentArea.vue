@@ -22,7 +22,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import ColumnInfoPanel from "@/components/editor/ColumnInfoPanel.vue";
 import type { ColumnInfo } from "@/components/editor/ColumnInfoPanel.vue";
-const DataGrid = defineAsyncComponent(() => import("@/components/grid/DataGrid.vue"));
+const DataGrid = defineAsyncComponent(async () => {
+  const startedAt = performance.now();
+  console.info("[DBX][DataGrid:load:start]");
+  const component = await import("@/components/grid/DataGrid.vue");
+  console.info("[DBX][DataGrid:load:done]", { elapsed: `${Math.round(performance.now() - startedAt)}ms` });
+  return component;
+});
 const RedisKeyBrowser = defineAsyncComponent(() => import("@/components/redis/RedisKeyBrowser.vue"));
 const MongoDocBrowser = defineAsyncComponent(() => import("@/components/mongo/MongoDocBrowser.vue"));
 const ObjectBrowser = defineAsyncComponent(() => import("@/components/objects/ObjectBrowser.vue"));
@@ -168,6 +174,35 @@ watch(
   () => [props.activeTab.isExecuting, props.activeTab.isExplaining],
   ([isExecuting, isExplaining]) => {
     if (isExecuting || isExplaining) resultsPaneOpen.value = true;
+  },
+);
+
+watch(
+  () => props.activeTab.result,
+  (result) => {
+    if (!result) return;
+    const startedAt = performance.now();
+    console.info("[DBX][ContentArea:result:observed]", {
+      tabId: props.activeTab.id,
+      rowCount: result.rows.length,
+      columnCount: result.columns.length,
+      backendMs: result.execution_time_ms,
+      isExecuting: props.activeTab.isExecuting,
+    });
+    nextTick(() => {
+      console.info("[DBX][ContentArea:result:nextTick]", {
+        tabId: props.activeTab.id,
+        elapsed: `${Math.round(performance.now() - startedAt)}ms`,
+        isExecuting: props.activeTab.isExecuting,
+      });
+      requestAnimationFrame(() => {
+        console.info("[DBX][ContentArea:result:first-frame]", {
+          tabId: props.activeTab.id,
+          elapsed: `${Math.round(performance.now() - startedAt)}ms`,
+          isExecuting: props.activeTab.isExecuting,
+        });
+      });
+    });
   },
 );
 
@@ -445,19 +480,19 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                   (column: string, columnIndex: number, direction: 'asc' | 'desc' | null, whereInput?: string) =>
                     emit('sort', column, columnIndex, direction, whereInput)
                 "
-              />
-              <div
-                v-if="activeTab.result?.columns.includes('Error')"
-                class="flex items-center gap-2 px-3 py-1.5 border-t bg-destructive/5"
               >
-                <Bot class="h-3.5 w-3.5 text-destructive" />
-                <button
-                  class="text-xs text-destructive hover:underline"
-                  @click="emit('fixWithAi', String(activeTab.result?.rows?.[0]?.[0] ?? ''))"
-                >
-                  {{ t("ai.fixWithAi") }}
-                </button>
-              </div>
+                <template v-if="activeTab.result?.columns.includes('Error')" #error-actions="{ errorMessage }">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-2 h-7 gap-1.5 border-destructive/30 bg-background px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    @click="emit('fixWithAi', String(errorMessage))"
+                  >
+                    <Bot class="h-3.5 w-3.5" />
+                    {{ t("ai.fixWithAi") }}
+                  </Button>
+                </template>
+              </DataGrid>
               <div
                 v-else-if="!activeTab.result && activeTab.isExecuting"
                 class="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 text-muted-foreground text-sm"
@@ -499,7 +534,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
             class="inline-flex items-center rounded border border-border bg-muted/30 px-2 py-0.5 text-muted-foreground truncate"
           >
             <template v-if="activeTab.tableMeta?.schema">{{ activeTab.tableMeta.schema }}@</template
-            >{{ databaseDisplayNameForTab(activeTab.connectionId, activeTab.database) }}
+            >{{ databaseDisplayNameForTab(activeTab.connectionId, activeTab.database, t) }}
           </span>
           <span v-if="activeTab.tableMeta" class="ml-auto text-muted-foreground">
             {{ activeTab.tableMeta.columns.length }} {{ t("tree.columns") }}

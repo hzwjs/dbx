@@ -1,5 +1,5 @@
 import type { ObjectInfo } from "@/types/database";
-import { normalizeDatabaseObjectName } from "@/lib/tableTree";
+import { createDatabaseObjectNameComparator, normalizeDatabaseObjectName } from "@/lib/tableTree";
 
 export type ObjectBrowserRow = {
   id: string;
@@ -111,10 +111,14 @@ export function sortObjectBrowserRows(
   direction: ObjectBrowserSortDirection,
 ): ObjectBrowserRow[] {
   const multiplier = direction === "asc" ? 1 : -1;
+  const compareNames = createDatabaseObjectNameComparator(rows.map((row) => row.name));
   return [...rows].sort((left, right) => {
-    const compared = compareObjectBrowserValue(left[key], right[key], key, direction);
+    const compared =
+      key === "name"
+        ? compareNames(left.name, right.name)
+        : compareObjectBrowserValue(left[key], right[key], key, direction);
     if (compared !== 0) return compared * multiplier;
-    return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
+    return compareNames(left.name, right.name);
   });
 }
 

@@ -18,11 +18,15 @@ import {
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import LightDropdown from "@/components/ui/LightDropdown.vue";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTabScroll } from "@/composables/useTabScroll";
-import { connectionColor, shouldShowTabOverflowControls } from "@/lib/tabPresentation";
+import {
+  connectionColor,
+  shouldShowTabOverflowControls,
+  tabDisplayTitle,
+  tabTooltipLines,
+} from "@/lib/tabPresentation";
 import { hexToRgba } from "@/lib/color";
 import type { QueryTab } from "@/types/database";
 
@@ -37,7 +41,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
 const compactTabTitle = computed({
@@ -170,83 +173,11 @@ const showTabOverflowControls = computed(() =>
   ),
 );
 
-const connectionSummariesById = computed(
-  () =>
-    new Map(
-      connectionStore.connections.map((connection) => [
-        connection.id,
-        { name: connection.name, databaseType: connection.db_type },
-      ]),
-    ),
-);
-
-function connectionNameForTab(tab: Pick<QueryTab, "connectionId">): string {
-  return connectionSummariesById.value.get(tab.connectionId)?.name || tab.connectionId;
-}
-
-function databaseNameForTab(tab: Pick<QueryTab, "connectionId" | "database">): string {
-  const connection = connectionSummariesById.value.get(tab.connectionId);
-  if (connection?.databaseType === "redis" && tab.database !== "") return `db${tab.database}`;
-  return tab.database || t("editor.noDatabase");
-}
-
-function isPreviewTab(tab: Pick<QueryTab, "connectionId">): boolean {
-  return !!connectionSummariesById.value.get(tab.connectionId)?.name.startsWith("[Preview]");
-}
-
-function tabTitle(tab: QueryTab): string {
-  const database = databaseNameForTab(tab);
-  if (isPreviewTab(tab)) return tab.title;
-  if (tab.mode === "data" && tab.tableMeta?.tableName) {
-    if (compactTabTitle.value) return tab.tableMeta.tableName;
-    const suffix =
-      tab.tableMeta.schema && tab.tableMeta.schema !== tab.database
-        ? `@${database}.${tab.tableMeta.schema}`
-        : `@${database}`;
-    return `${tab.tableMeta.tableName}${suffix}`;
-  }
-  if (tab.mode === "query") {
-    if (compactTabTitle.value) return connectionNameForTab(tab);
-    return `${connectionNameForTab(tab)}@${database}`;
-  }
-  if (tab.mode === "mongo" && tab.sql) {
-    if (compactTabTitle.value) return tab.sql;
-    return `${tab.sql}@${database}`;
-  }
-  if (tab.mode === "redis") {
-    if (compactTabTitle.value) return connectionNameForTab(tab);
-    return `${connectionNameForTab(tab)}@${database}`;
-  }
-  if (tab.mode === "objects") {
-    const schema = tab.objectBrowser?.schema;
-    if (compactTabTitle.value) return schema || tab.title;
-    return schema ? `${schema}@${database}` : `${tab.title}@${database}`;
-  }
-  return tab.title;
-}
-
-function tabTooltipRows(tab: QueryTab): { label: string; value: string }[] {
-  const rows: { label: string; value: string }[] = [
-    { label: t("tabs.tooltipConnection"), value: connectionNameForTab(tab) },
-    { label: t("tabs.tooltipDatabase"), value: databaseNameForTab(tab) },
-  ];
-  if (tab.mode === "data" && tab.tableMeta?.tableName) {
-    rows.push({ label: t("tabs.tooltipTable"), value: tab.tableMeta.tableName });
-  }
-  if (tab.mode === "mongo" && tab.sql) {
-    rows.push({ label: t("tabs.tooltipCollection"), value: tab.sql });
-  }
-  if (tab.mode === "objects" && tab.objectBrowser?.schema) {
-    rows.push({ label: t("tabs.tooltipSchema"), value: tab.objectBrowser.schema });
-  }
-  return rows;
-}
-
 const openTabMenuItems = computed(() =>
   queryStore.tabs.map((tab) => ({
     value: tab.id,
-    label: tabTitle(tab),
-    title: tabTitle(tab),
+    label: tabDisplayTitle(tab, t),
+    title: tabDisplayTitle(tab, t),
     icon: tabMenuIcon(tab),
     iconClass: tabIconClass(tab),
   })),
@@ -354,7 +285,7 @@ const tabOverflowControlClass = computed(() =>
                   <PencilRuler v-else-if="tab.mode === 'structure'" class="h-3.5 w-3.5" />
                   <Code2 v-else class="h-3.5 w-3.5" />
                 </span>
-                <span class="min-w-0 truncate flex-1">{{ tabTitle(tab) }}</span>
+                <span class="min-w-0 truncate flex-1">{{ tabDisplayTitle(tab, t) }}</span>
                 <Tooltip>
                   <TooltipTrigger as-child>
                     <button
@@ -376,7 +307,7 @@ const tabOverflowControlClass = computed(() =>
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" class="text-xs grid grid-cols-[auto_1fr] gap-x-2">
-              <template v-for="line in tabTooltipRows(tab)" :key="line.label">
+              <template v-for="line in tabTooltipLines(tab, t)" :key="line.label">
                 <span class="text-muted-foreground">{{ line.label }}</span>
                 <span>{{ line.value }}</span>
               </template>

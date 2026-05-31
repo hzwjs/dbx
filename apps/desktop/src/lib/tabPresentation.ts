@@ -1,7 +1,8 @@
-import { useI18n } from "vue-i18n";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import type { QueryTab } from "@/types/database";
+
+type Translate = (key: string, params?: Record<string, unknown>) => string;
 
 export function connectionDisplayName(connectionId: string): string {
   const connectionStore = useConnectionStore();
@@ -13,18 +14,11 @@ export function connectionColor(connectionId: string): string {
   return connectionStore.getConfig(connectionId)?.color || "";
 }
 
-export function databaseDisplayNameForTab(connectionId: string, database: string): string {
-  const { t } = useI18n();
+export function databaseDisplayNameForTab(connectionId: string, database: string, t: Translate): string {
   const connectionStore = useConnectionStore();
   const connection = connectionStore.getConfig(connectionId);
   if (connection?.db_type === "redis" && database !== "") return `db${database}`;
   return database || t("editor.noDatabase");
-}
-
-export function tabGroupLabel(tab: Pick<QueryTab, "connectionId" | "database">): string {
-  const connection = connectionDisplayName(tab.connectionId);
-  const database = databaseDisplayNameForTab(tab.connectionId, tab.database);
-  return database ? `${connection} / ${database}` : connection;
 }
 
 export function isPreviewTab(tab: QueryTab): boolean {
@@ -33,8 +27,8 @@ export function isPreviewTab(tab: QueryTab): boolean {
   return !!config?.name.startsWith("[Preview]");
 }
 
-export function tabDisplayTitle(tab: QueryTab): string {
-  const database = databaseDisplayNameForTab(tab.connectionId, tab.database);
+export function tabDisplayTitle(tab: QueryTab, t: Translate): string {
+  const database = databaseDisplayNameForTab(tab.connectionId, tab.database, t);
   const settingsStore = useSettingsStore();
   const compact = settingsStore.editorSettings.compactTabTitle;
   if (isPreviewTab(tab)) return tab.title;
@@ -66,10 +60,9 @@ export function tabDisplayTitle(tab: QueryTab): string {
   return tab.title;
 }
 
-export function tabTooltipLines(tab: QueryTab): { label: string; value: string }[] {
-  const { t } = useI18n();
+export function tabTooltipLines(tab: QueryTab, t: Translate): { label: string; value: string }[] {
   const connName = connectionDisplayName(tab.connectionId);
-  const database = databaseDisplayNameForTab(tab.connectionId, tab.database);
+  const database = databaseDisplayNameForTab(tab.connectionId, tab.database, t);
   const lines: { label: string; value: string }[] = [
     { label: t("tabs.tooltipConnection"), value: connName },
     { label: t("tabs.tooltipDatabase"), value: database },
@@ -95,8 +88,7 @@ export function shouldShowTabOverflowControls(
   return tabCount > 0 && (hasTabOverflow || canScrollLeft || canScrollRight);
 }
 
-export function tabModeLabel(tab: QueryTab): string {
-  const { t } = useI18n();
+export function tabModeLabel(tab: QueryTab, t: Translate): string {
   if (tab.mode === "data") return t("tabs.table");
   if (tab.mode === "query") return t("tabs.sql");
   if (tab.mode === "mongo") return t("tabs.mongo");

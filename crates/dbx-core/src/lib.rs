@@ -34,6 +34,7 @@ pub mod sql;
 pub mod sql_analysis;
 pub mod sql_dialect;
 pub mod sql_editability;
+pub mod sql_file_import;
 pub mod storage;
 pub mod table_import;
 pub mod table_structure_sql;
