@@ -20,8 +20,9 @@ pub async fn connect(url: &str, timeout: Duration) -> Result<Client, String> {
     .await
 }
 
-pub async fn test_connection(client: &Client, timeout: Duration) -> Result<(), String> {
-    tokio::time::timeout(timeout, client.list_database_names())
+pub async fn test_connection(client: &Client, timeout: Duration, database: Option<&str>) -> Result<(), String> {
+    let database = database.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("admin");
+    tokio::time::timeout(timeout, client.database(database).run_command(doc! { "ping": 1 }))
         .await
         .map_err(|_| format!("MongoDB connection timed out ({}s)", timeout.as_secs()))?
         .map(|_| ())

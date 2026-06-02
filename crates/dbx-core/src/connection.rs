@@ -253,7 +253,13 @@ impl AppState {
             }
             DatabaseType::MongoDb => {
                 let native_err = match db::mongo_driver::connect(&url, connect_timeout).await {
-                    Ok(client) => match db::mongo_driver::test_connection(&client, connect_timeout).await {
+                    Ok(client) => match db::mongo_driver::test_connection(
+                        &client,
+                        connect_timeout,
+                        db_config.effective_database(),
+                    )
+                    .await
+                    {
                         Ok(()) => {
                             self.connections.write().await.insert(pool_key.clone(), PoolKind::MongoDb(client));
                             return Ok(pool_key);

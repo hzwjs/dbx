@@ -334,10 +334,14 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
             }
             DatabaseType::MongoDb => {
                 let native_err = match db::mongo_driver::connect(&url, connect_timeout).await {
-                    Ok(client) => match db::mongo_driver::test_connection(&client, connect_timeout).await {
-                        Ok(()) => return Ok("Connection successful".to_string()),
-                        Err(e) => e,
-                    },
+                    Ok(client) => {
+                        match db::mongo_driver::test_connection(&client, connect_timeout, config.effective_database())
+                            .await
+                        {
+                            Ok(()) => return Ok("Connection successful".to_string()),
+                            Err(e) => e,
+                        }
+                    }
                     Err(e) => e,
                 };
                 if native_err.contains("wire version") {
@@ -483,14 +487,18 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
         }
         DatabaseType::MongoDb => {
             let native_err = match db::mongo_driver::connect(&url, connect_timeout).await {
-                Ok(client) => match db::mongo_driver::test_connection(&client, connect_timeout).await {
-                    Ok(()) => {
-                        state.configs.write().await.insert(id.clone(), config);
-                        state.connections.write().await.insert(id.clone(), PoolKind::MongoDb(client));
-                        return Ok(id);
+                Ok(client) => {
+                    match db::mongo_driver::test_connection(&client, connect_timeout, db_config.effective_database())
+                        .await
+                    {
+                        Ok(()) => {
+                            state.configs.write().await.insert(id.clone(), config);
+                            state.connections.write().await.insert(id.clone(), PoolKind::MongoDb(client));
+                            return Ok(id);
+                        }
+                        Err(e) => e,
                     }
-                    Err(e) => e,
-                },
+                }
                 Err(e) => e,
             };
             if native_err.contains("wire version") {
