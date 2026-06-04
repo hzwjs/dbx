@@ -477,6 +477,7 @@ export const useQueryStore = defineStore("query", () => {
     const [tab] = tabs.value.splice(fromIdx, 1);
     const newToIdx = tabs.value.findIndex((t) => t.id === targetId);
     tabs.value.splice(newToIdx + (position === "after" ? 1 : 0), 0, tab);
+    tabs.value = orderPinnedFirst(tabs.value, (item) => !!item.pinned);
   }
 
   function updateDatabase(id: string, database: string) {

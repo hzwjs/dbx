@@ -1135,3 +1135,109 @@ test("new table structure tabs can open multiple drafts while existing tables st
     restoreStorage();
   }
 });
+
+test("reorderTab keeps pinned tabs before unpinned tabs after reorder", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+
+  const tabA = store.createTab("conn-1", "db", "A", "query");
+  const tabB = store.createTab("conn-1", "db", "B", "query");
+  const tabC = store.createTab("conn-1", "db", "C", "query");
+  const tabD = store.createTab("conn-1", "db", "D", "query");
+
+  store.tabs[0].pinned = false;
+  store.tabs[1].pinned = true;
+  store.tabs[2].pinned = false;
+  store.tabs[3].pinned = true;
+
+  // Force store to apply pinned ordering
+  store.togglePinnedTab(tabB);
+  store.togglePinnedTab(tabB);
+  // Now tabs: D(b), B(b), A, C
+
+  // Try dragging unpinned tab A before pinned tab B
+  store.reorderTab(tabA, tabB, "before");
+  const idsAfter = store.tabs.map((t) => t.id);
+  const pinnedIndices = store.tabs.map((t, i) => ({ pinned: t.pinned, i })).filter((t) => t.pinned);
+  const unpinnedIndices = store.tabs.map((t, i) => ({ pinned: t.pinned, i })).filter((t) => !t.pinned);
+
+  // All pinned tabs should come before any unpinned tab
+  assert.equal(Math.max(...pinnedIndices.map((t) => t.i)) < Math.min(...unpinnedIndices.map((t) => t.i)), true);
+});
+
+test("reorderTab preserves relative order within pinned group", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+
+  const tabA = store.createTab("conn-1", "db", "A", "query");
+  const tabB = store.createTab("conn-1", "db", "B", "query");
+  const tabC = store.createTab("conn-1", "db", "C", "query");
+  const tabD = store.createTab("conn-1", "db", "D", "query");
+  const tabE = store.createTab("conn-1", "db", "E", "query");
+
+  // Pin A, B, C — leave D, E unpinned
+  store.togglePinnedTab(tabA);
+  // toggle so orderPinnedFirst runs: [A, B, C, D, E]
+  store.togglePinnedTab(tabB);
+  // [A, B, C, D, E]
+  assert.equal(store.tabs.filter((t) => t.pinned).length, 2);
+
+  store.togglePinnedTab(tabC);
+  // pinned = [A, B, C], unpinned = [D, E]
+  assert.equal(store.tabs.filter((t) => t.pinned).length, 3);
+
+  // Now: A, B, C (pinned), D, E (unpinned)
+  // Drag C before A (within pinned group)
+  store.reorderTab(tabC, tabA, "before");
+  // After orderPinnedFirst: C, A, B, D, E
+  const ids = store.tabs.map((t) => t.id);
+  assert.equal(ids[0], tabC, "C should be first pinned tab");
+  assert.equal(ids[1], tabA, "A should be second pinned tab");
+  assert.equal(ids[2], tabB, "B should be third pinned tab");
+  assert.equal(ids[3], tabD, "D should be first unpinned");
+  assert.equal(ids[4], tabE, "E should be second unpinned");
+});
+
+test("reorderTab preserves relative order within unpinned group", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+
+  const tabA = store.createTab("conn-1", "db", "A", "query");
+  const tabB = store.createTab("conn-1", "db", "B", "query");
+  const tabC = store.createTab("conn-1", "db", "C", "query");
+  const tabD = store.createTab("conn-1", "db", "D", "query");
+
+  store.tabs[0].pinned = true;
+  store.tabs[1].pinned = false;
+  store.tabs[2].pinned = false;
+  store.tabs[3].pinned = false;
+
+  store.togglePinnedTab(tabA);
+  store.togglePinnedTab(tabA);
+
+  // Now tabs: A(pinned), B, C, D(unpinned)
+  // Drag D before B
+  store.reorderTab(tabD, tabB, "before");
+  // After orderPinnedFirst: A, D, B, C
+  const ids = store.tabs.map((t) => t.id);
+  assert.equal(ids[0], tabA, "A should stay pinned");
+  assert.equal(ids[1], tabD, "D should be first unpinned");
+  assert.equal(ids[2], tabB, "B should be second unpinned");
+  assert.equal(ids[3], tabC, "C should be last unpinned");
+});
+
+test("reorderTab with after position places tab correctly", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+
+  const tabA = store.createTab("conn-1", "db", "A", "query");
+  const tabB = store.createTab("conn-1", "db", "B", "query");
+  const tabC = store.createTab("conn-1", "db", "C", "query");
+
+  // Drag A after C
+  store.reorderTab(tabA, tabC, "after");
+  assert.deepEqual(
+    store.tabs.map((t) => t.id),
+    [tabB, tabC, tabA],
+  );
+});

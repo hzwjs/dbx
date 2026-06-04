@@ -333,6 +333,7 @@ const tabOverflowControlClass = computed(() =>
                 @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
                 @mousedown="tabDrag.startDrag($event, tab.id)"
                 @mouseenter="tabDrag.updateTarget($event, tab.id)"
+                @mousemove="tabDrag.updateTarget($event, tab.id)"
                 @mouseleave="tabDrag.clearTarget(tab.id)"
               >
                 <span class="shrink-0" :class="tabIconClass(tab)">
