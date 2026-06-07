@@ -20,6 +20,7 @@ import type {
   SavedSqlFolder,
   SavedSqlLibrary,
 } from "@/types/database";
+import type { SidebarObjectKind } from "@/lib/databaseObjectCapabilities";
 import type { AiConfig } from "@/stores/settingsStore";
 import type {
   AgentDriverInfo,
@@ -394,8 +395,20 @@ export async function listTables(
   return get(`/api/schema/tables?${qs({ connection_id: connectionId, database, schema, filter, limit })}`);
 }
 
-export async function listObjects(connectionId: string, database: string, schema: string): Promise<ObjectInfo[]> {
-  return get(`/api/schema/objects?${qs({ connection_id: connectionId, database, schema })}`);
+export async function listObjects(
+  connectionId: string,
+  database: string,
+  schema: string,
+  objectTypes?: SidebarObjectKind[],
+): Promise<ObjectInfo[]> {
+  return get(
+    `/api/schema/objects?${qs({
+      connection_id: connectionId,
+      database,
+      schema,
+      object_types: objectTypes?.join(","),
+    })}`,
+  );
 }
 
 export async function listCompletionObjects(

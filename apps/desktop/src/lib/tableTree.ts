@@ -1,4 +1,5 @@
 import type { ObjectInfo, TableInfo, TreeNode, TreeNodeType } from "@/types/database";
+import { normalizeSidebarObjectKind, type SidebarObjectKind } from "@/lib/databaseObjectCapabilities";
 
 const databaseObjectNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -315,7 +316,7 @@ export function hasTablePartitionGroups(node: TreeNode): boolean {
   return partitionGroupChildren(node).length > 0;
 }
 
-type DatabaseObjectTreeKind = "TABLE" | "VIEW" | "PROCEDURE" | "FUNCTION" | "PACKAGE" | "PACKAGE_BODY";
+export type DatabaseObjectTreeKind = SidebarObjectKind;
 
 function buildObjectTreeEntries({
   nodeId,
@@ -369,12 +370,11 @@ export function buildSimpleObjectTreeNodes({
 }): TreeNode[] {
   const seen = new Set<string>();
   const tableEntries: TableTreeEntry[] = [];
-  const viewNodes: TreeNode[] = [];
+  const objectNodes: TreeNode[] = [];
 
   for (const obj of objects) {
     const objectType = normalizeObjectType(obj.object_type);
-    if (objectType !== "TABLE" && objectType !== "VIEW" && objectType !== "PACKAGE" && objectType !== "PACKAGE_BODY")
-      continue;
+    if (!["TABLE", "VIEW", "PROCEDURE", "FUNCTION", "PACKAGE", "PACKAGE_BODY"].includes(objectType)) continue;
 
     const name = normalizeDatabaseObjectName(obj.name);
     if (!name) continue;
@@ -397,13 +397,15 @@ export function buildSimpleObjectTreeNodes({
     });
     if (objectType === "TABLE") {
       tableEntries.push(entry);
-    } else if (objectType === "VIEW") {
-      viewNodes.push(entry.node);
     } else {
-      viewNodes.push({
-        id: `${nodeId}:${childSchema ? `${childSchema}:` : ""}${name}:${objectType}`,
+      const simpleNodeType = simpleObjectNodeType(objectType);
+      objectNodes.push({
+        id:
+          objectType === "VIEW"
+            ? entry.node.id
+            : `${nodeId}:${childSchema ? `${childSchema}:` : ""}${name}:${objectType}`,
         label: name,
-        type: objectType === "PACKAGE_BODY" ? "package-body" : "package",
+        type: simpleNodeType,
         comment: obj.comment,
         connectionId,
         database,
@@ -416,18 +418,21 @@ export function buildSimpleObjectTreeNodes({
 
   return [
     ...buildPartitionTree(tableEntries, connectionId, database),
-    ...sortDatabaseObjectsByName(viewNodes, (node) => node.label),
+    ...sortDatabaseObjectsByName(objectNodes, (node) => node.label),
   ];
 }
 
+function simpleObjectNodeType(objectType: DatabaseObjectTreeKind): TreeNodeType {
+  if (objectType === "VIEW") return "view";
+  if (objectType === "PROCEDURE") return "procedure";
+  if (objectType === "FUNCTION") return "function";
+  if (objectType === "PACKAGE_BODY") return "package-body";
+  if (objectType === "PACKAGE") return "package";
+  return "table";
+}
+
 function normalizeObjectType(type: string): DatabaseObjectTreeKind {
-  const v = type.toUpperCase();
-  if (v.includes("PACKAGE BODY") || v.includes("PACKAGE_BODY")) return "PACKAGE_BODY";
-  if (v.includes("PACKAGE")) return "PACKAGE";
-  if (v.includes("VIEW")) return "VIEW";
-  if (v.includes("PROC")) return "PROCEDURE";
-  if (v.includes("FUNC")) return "FUNCTION";
-  return "TABLE";
+  return normalizeSidebarObjectKind(type);
 }
 
 const groupDefs: Array<{
@@ -470,11 +475,43 @@ const objectGroupNodeTypes = new Set<TreeNodeType>([
   "group-packages",
 ]);
 
+export function buildObjectGroupPlaceholderNodes({
+  nodeId,
+  connectionId,
+  database,
+  schema,
+  objectTypes,
+}: {
+  nodeId: string;
+  connectionId: string;
+  database: string;
+  schema?: string;
+  objectTypes: DatabaseObjectTreeKind[];
+}): TreeNode[] {
+  const supported = new Set(objectTypes);
+  return groupDefs
+    .filter((def) => def.objectTypes.some((objectType) => supported.has(objectType)))
+    .map((def) => ({
+      id: `${nodeId}:${def.key}`,
+      label: def.label,
+      type: def.nodeType,
+      connectionId,
+      database,
+      schema,
+      isExpanded: false,
+      children: [],
+    }));
+}
+
 export function objectGroupRefreshParentId(node: TreeNode): string | null {
   if (!objectGroupNodeTypes.has(node.type)) return null;
   const suffixStart = node.id.lastIndexOf(":__");
   if (suffixStart < 0) return null;
   return node.id.slice(0, suffixStart);
+}
+
+export function objectTypesForGroupNode(type: TreeNodeType): DatabaseObjectTreeKind[] | null {
+  return groupDefs.find((def) => def.nodeType === type)?.objectTypes ?? null;
 }
 
 export function buildGroupedObjectTreeNodes({

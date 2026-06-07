@@ -11,11 +11,12 @@ function obj(name: string, objectType = "TABLE"): ObjectInfo {
 }
 
 test("SQL Server database tree groups dbo objects and keeps non-default schemas", () => {
-  const nodes = buildSqlServerDatabaseTreeNodes("conn", "app", ["dbo", "zeta", "sales"], [
-    obj("customers"),
-    obj("customer_view", "VIEW"),
-    obj("get_total", "FUNCTION"),
-  ]);
+  const nodes = buildSqlServerDatabaseTreeNodes(
+    "conn",
+    "app",
+    ["dbo", "zeta", "sales"],
+    [obj("customers"), obj("customer_view", "VIEW"), obj("get_total", "FUNCTION")],
+  );
 
   const topLevel = nodes.map((n) => ({ id: n.id, label: n.label, type: n.type }));
   assert.deepEqual(topLevel, [
@@ -52,16 +53,40 @@ test("SQL Server database tree shows only schemas when dbo has no objects", () =
 });
 
 test("SQL Server database tree groups procedures alongside tables", () => {
-  const nodes = buildSqlServerDatabaseTreeNodes("conn", "app", ["dbo"], [
-    obj("orders"),
-    obj("sp_refresh", "PROCEDURE"),
-  ]);
+  const nodes = buildSqlServerDatabaseTreeNodes(
+    "conn",
+    "app",
+    ["dbo"],
+    [obj("orders"), obj("sp_refresh", "PROCEDURE")],
+  );
 
   assert.deepEqual(
     nodes.map((n) => ({ label: n.label, type: n.type })),
     [
       { label: "tree.tables", type: "group-tables" },
       { label: "tree.procedures", type: "group-procedures" },
+    ],
+  );
+});
+
+test("SQL Server database tree can render lazy object groups before metadata is loaded", () => {
+  const nodes = buildSqlServerDatabaseTreeNodes("conn", "app", ["dbo", "sales"], [], {
+    lazyObjectTypes: ["TABLE", "VIEW", "PROCEDURE", "FUNCTION"],
+  });
+
+  assert.deepEqual(
+    nodes.map((n) => ({ label: n.label, type: n.type, count: n.objectCount, children: n.children })),
+    [
+      { label: "tree.tables", type: "group-tables", count: undefined, children: [] },
+      { label: "tree.views", type: "group-views", count: undefined, children: [] },
+      { label: "tree.procedures", type: "group-procedures", count: undefined, children: [] },
+      { label: "tree.functions", type: "group-functions", count: undefined, children: [] },
+      {
+        label: "sales",
+        type: "schema",
+        count: undefined,
+        children: [],
+      },
     ],
   );
 });

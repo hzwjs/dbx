@@ -350,14 +350,19 @@ async function toggle() {
     return;
   }
 
-  if (
+  if (node.type === "group-partitions") {
+    node.isExpanded = !node.isExpanded;
+    emit("node-toggled", node, wasExpanded);
+    return;
+  }
+
+  const databaseObjectGroup =
     node.type === "group-tables" ||
     node.type === "group-views" ||
     node.type === "group-procedures" ||
     node.type === "group-functions" ||
-    node.type === "group-packages" ||
-    node.type === "group-partitions"
-  ) {
+    node.type === "group-packages";
+  if (databaseObjectGroup && connectionStore.isTreeNodeChildrenLoaded(node.id)) {
     node.isExpanded = !node.isExpanded;
     emit("node-toggled", node, wasExpanded);
     return;
@@ -428,6 +433,8 @@ async function toggle() {
       node.tableName
     ) {
       await connectionStore.loadTriggers(node.connectionId, node.database, node.tableName, node.schema, node.id);
+    } else if (databaseObjectGroup) {
+      await connectionStore.loadObjectGroupChildren(node);
     }
     emit("node-toggled", node, wasExpanded);
   } catch (e: any) {

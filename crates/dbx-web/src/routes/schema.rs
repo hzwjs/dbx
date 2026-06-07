@@ -16,6 +16,7 @@ pub struct SchemaQuery {
     pub filter: Option<String>,
     pub limit: Option<usize>,
     pub object_type: Option<dbx_core::db::ObjectSourceKind>,
+    pub object_types: Option<String>,
 }
 
 pub async fn list_databases(
@@ -60,9 +61,15 @@ pub async fn list_objects(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let database = q.database.as_deref().unwrap_or("");
     let schema = q.schema.as_deref().unwrap_or("");
-    let result =
-        dbx_core::schema::list_objects_core(&state.app, &q.connection_id, database, schema).await.map_err(AppError)?;
+    let object_types = q.object_types.as_deref().map(parse_object_types).filter(|types| !types.is_empty());
+    let result = dbx_core::schema::list_objects_core(&state.app, &q.connection_id, database, schema, object_types)
+        .await
+        .map_err(AppError)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError(e.to_string()))?))
+}
+
+fn parse_object_types(value: &str) -> Vec<String> {
+    value.split(',').map(str::trim).filter(|value| !value.is_empty()).map(ToString::to_string).collect()
 }
 
 pub async fn list_completion_objects(

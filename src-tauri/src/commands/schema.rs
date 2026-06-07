@@ -39,8 +39,9 @@ pub async fn list_objects(
     connection_id: String,
     database: String,
     schema: String,
+    object_types: Option<Vec<String>>,
 ) -> Result<Vec<db::ObjectInfo>, String> {
-    dbx_core::schema::list_objects_core(&state, &connection_id, &database, &schema).await
+    dbx_core::schema::list_objects_core(&state, &connection_id, &database, &schema, object_types).await
 }
 
 #[tauri::command]

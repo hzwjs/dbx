@@ -1,6 +1,11 @@
 import type { ObjectInfo, TreeNode } from "@/types/database";
 import { sortSidebarNames } from "@/lib/databaseTree";
-import { buildGroupedObjectTreeNodes, buildSimpleObjectTreeNodes } from "@/lib/tableTree";
+import {
+  buildGroupedObjectTreeNodes,
+  buildObjectGroupPlaceholderNodes,
+  buildSimpleObjectTreeNodes,
+  type DatabaseObjectTreeKind,
+} from "@/lib/tableTree";
 
 export const SQLSERVER_DEFAULT_SCHEMA = "dbo";
 
@@ -13,26 +18,34 @@ export function buildSqlServerDatabaseTreeNodes(
   database: string,
   schemas: string[],
   defaultSchemaObjects: ObjectInfo[],
-  options: { simpleObjectDisplay?: boolean } = {},
+  options: { lazyObjectTypes?: DatabaseObjectTreeKind[]; simpleObjectDisplay?: boolean } = {},
 ): TreeNode[] {
   const databaseNodeId = `${connectionId}:${database}`;
   const defaultSchema = schemas.find(isDefaultSchema) || SQLSERVER_DEFAULT_SCHEMA;
 
-  const defaultObjectNodes = options.simpleObjectDisplay
-    ? buildSimpleObjectTreeNodes({
+  const defaultObjectNodes = options.lazyObjectTypes
+    ? buildObjectGroupPlaceholderNodes({
         nodeId: databaseNodeId,
         connectionId,
         database,
         schema: defaultSchema,
-        objects: defaultSchemaObjects,
+        objectTypes: options.lazyObjectTypes,
       })
-    : buildGroupedObjectTreeNodes({
-        nodeId: databaseNodeId,
-        connectionId,
-        database,
-        schema: defaultSchema,
-        objects: defaultSchemaObjects,
-      });
+    : options.simpleObjectDisplay
+      ? buildSimpleObjectTreeNodes({
+          nodeId: databaseNodeId,
+          connectionId,
+          database,
+          schema: defaultSchema,
+          objects: defaultSchemaObjects,
+        })
+      : buildGroupedObjectTreeNodes({
+          nodeId: databaseNodeId,
+          connectionId,
+          database,
+          schema: defaultSchema,
+          objects: defaultSchemaObjects,
+        });
 
   const schemaNodes = sortSidebarNames(schemas.filter((schema) => !isDefaultSchema(schema))).map((schema) => ({
     id: `${databaseNodeId}:${schema}`,

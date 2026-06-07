@@ -6,6 +6,7 @@ import {
   databaseObjectTreeNodeSchema,
   databaseObjectTreeQuerySchema,
   getDatabaseCapability,
+  sidebarObjectKindsForDatabase,
   supportsDatabaseCreation,
   supportsDatabaseSearch,
   supportsDriverManagement,
@@ -265,4 +266,17 @@ test("object browser entry follows database tree shape", () => {
   assert.equal(supportsObjectBrowserTreeNode("mysql", "database"), true);
   assert.equal(supportsObjectBrowserTreeNode("jdbc", "database"), true);
   assert.equal(supportsObjectBrowserTreeNode("mongodb", "database"), false);
+});
+
+test("sidebar object capability registry describes object groups by database type", () => {
+  assert.deepEqual(sidebarObjectKindsForDatabase("databend"), ["TABLE", "VIEW"]);
+  assert.deepEqual(sidebarObjectKindsForDatabase("postgres"), ["TABLE", "VIEW", "PROCEDURE", "FUNCTION"]);
+  assert.deepEqual(sidebarObjectKindsForDatabase("oracle"), [
+    "TABLE",
+    "VIEW",
+    "PROCEDURE",
+    "FUNCTION",
+    "PACKAGE",
+    "PACKAGE_BODY",
+  ]);
 });

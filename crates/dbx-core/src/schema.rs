@@ -2,6 +2,7 @@ use crate::connection::{connection_url_for_endpoint, database_connection_config,
 use crate::db;
 use crate::models::connection::{ConnectionConfig, DatabaseType};
 use crate::query::{agent_execute_query_params, QueryExecutionOptions};
+use std::collections::HashSet;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -555,7 +556,7 @@ fn filter_table_infos(tables: Vec<db::TableInfo>, filter: Option<&str>, limit: O
 mod tests {
     use super::{
         clickhouse_metadata_database, deduplicate_column_infos, duckdb_attach_database, duckdb_list_databases,
-        duckdb_query_tables_in_database, is_agent_postgres_metadata_fallback_config,
+        duckdb_query_tables_in_database, filter_objects_by_types, is_agent_postgres_metadata_fallback_config,
     };
     use crate::models::connection::{ConnectionConfig, DatabaseType};
 
@@ -682,6 +683,49 @@ mod tests {
         assert!(!is_agent_postgres_metadata_fallback_config(&test_connection_config(DatabaseType::Postgres)));
         assert!(!is_agent_postgres_metadata_fallback_config(&test_connection_config(DatabaseType::Mysql)));
     }
+
+    #[test]
+    fn filters_list_objects_by_normalized_object_types() {
+        let objects = vec![
+            super::db::ObjectInfo {
+                name: "orders".to_string(),
+                object_type: "BASE TABLE".to_string(),
+                schema: None,
+                comment: None,
+                created_at: None,
+                updated_at: None,
+                parent_schema: None,
+                parent_name: None,
+            },
+            super::db::ObjectInfo {
+                name: "active_orders".to_string(),
+                object_type: "MATERIALIZED VIEW".to_string(),
+                schema: None,
+                comment: None,
+                created_at: None,
+                updated_at: None,
+                parent_schema: None,
+                parent_name: None,
+            },
+            super::db::ObjectInfo {
+                name: "payroll".to_string(),
+                object_type: "PACKAGE BODY".to_string(),
+                schema: None,
+                comment: None,
+                created_at: None,
+                updated_at: None,
+                parent_schema: None,
+                parent_name: None,
+            },
+        ];
+
+        let filtered = filter_objects_by_types(objects, Some(&["VIEW".to_string(), "PACKAGE_BODY".to_string()]));
+
+        assert_eq!(
+            filtered.iter().map(|object| object.name.as_str()).collect::<Vec<_>>(),
+            ["active_orders", "payroll"]
+        );
+    }
 }
 
 pub async fn list_objects_core(
@@ -689,9 +733,10 @@ pub async fn list_objects_core(
     connection_id: &str,
     database: &str,
     schema: &str,
+    object_types: Option<Vec<String>>,
 ) -> Result<Vec<db::ObjectInfo>, String> {
     retry_metadata_connection(state, connection_id, Some(database), || {
-        list_objects_once(state, connection_id, database, schema)
+        list_objects_once(state, connection_id, database, schema, object_types.as_deref())
     })
     .await
 }
@@ -709,6 +754,18 @@ pub async fn list_completion_objects_core(
 }
 
 async fn list_objects_once(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    schema: &str,
+    object_types: Option<&[String]>,
+) -> Result<Vec<db::ObjectInfo>, String> {
+    list_objects_once_unfiltered(state, connection_id, database, schema)
+        .await
+        .map(|objects| filter_objects_by_types(objects, object_types))
+}
+
+async fn list_objects_once_unfiltered(
     state: &AppState,
     connection_id: &str,
     database: &str,
@@ -832,6 +889,35 @@ async fn list_objects_once(
     }
 }
 
+fn filter_objects_by_types(objects: Vec<db::ObjectInfo>, object_types: Option<&[String]>) -> Vec<db::ObjectInfo> {
+    let Some(object_types) = object_types else {
+        return objects;
+    };
+    if object_types.is_empty() {
+        return objects;
+    }
+    let wanted: HashSet<String> =
+        object_types.iter().map(|object_type| normalize_object_info_type(object_type)).collect();
+    objects.into_iter().filter(|object| wanted.contains(&normalize_object_info_type(&object.object_type))).collect()
+}
+
+fn normalize_object_info_type(object_type: &str) -> String {
+    let value = object_type.to_ascii_uppercase().replace(' ', "_");
+    if value.contains("PACKAGE_BODY") {
+        "PACKAGE_BODY".to_string()
+    } else if value.contains("PACKAGE") {
+        "PACKAGE".to_string()
+    } else if value.contains("VIEW") {
+        "VIEW".to_string()
+    } else if value.contains("PROC") {
+        "PROCEDURE".to_string()
+    } else if value.contains("FUNC") {
+        "FUNCTION".to_string()
+    } else {
+        "TABLE".to_string()
+    }
+}
+
 async fn list_completion_objects_once(
     state: &AppState,
     connection_id: &str,
@@ -919,7 +1005,7 @@ async fn list_completion_objects_once(
         PoolKind::Postgres(p) => db::postgres::list_objects(p, schema).await.map(filter_completion_objects),
         PoolKind::SqlServer(_) => {
             drop(connections);
-            let objects = list_objects_once(state, connection_id, database, schema).await?;
+            let objects = list_objects_once(state, connection_id, database, schema, None).await?;
             Ok(filter_completion_objects(objects))
         }
         _ => Ok(Vec::new()),

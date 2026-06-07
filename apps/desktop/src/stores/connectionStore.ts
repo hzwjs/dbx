@@ -20,11 +20,17 @@ import {
 import type { SqlCompletionColumn, SqlCompletionObject, SqlCompletionTable } from "@/lib/sqlCompletion";
 import * as api from "@/lib/api";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
-import { isSchemaAware, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
+import {
+  isSchemaAware,
+  normalizeSidebarObjectKind,
+  sidebarObjectKindsForDatabase,
+  usesTreeSchemaMode,
+} from "@/lib/databaseCapabilities";
 import {
   connectionObjectTreeNodeSchema,
   connectionObjectTreeQuerySchema,
   connectionUsesDatabaseObjectTreeMode,
+  effectiveDatabaseTypeForConnection,
 } from "@/lib/jdbcDialect";
 import {
   buildDatabaseTreeNodes,
@@ -42,12 +48,16 @@ import {
   normalizeVisibleDatabaseSelection,
 } from "@/lib/visibleDatabases";
 import {
+  buildObjectGroupPlaceholderNodes,
   buildGroupedObjectTreeNodes,
+  buildSimpleObjectTreeNodes,
   buildTableTreeNodes,
   expandCachedObjectBrowserNodes,
   mergeTableInfosIntoObjects,
   objectGroupRefreshParentId,
+  objectTypesForGroupNode,
   tablePartitionGroups,
+  type DatabaseObjectTreeKind,
 } from "@/lib/tableTree";
 import {
   hasTreeNodeDatabaseContext,
@@ -437,6 +447,11 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function schemaCacheKey(...parts: string[]): string {
     return parts.map((part) => encodeURIComponent(part)).join(":");
+  }
+
+  function supportedSidebarObjectTypes(config?: ConnectionConfig): DatabaseObjectTreeKind[] {
+    const dbType = effectiveDatabaseTypeForConnection(config);
+    return sidebarObjectKindsForDatabase(dbType);
   }
 
   function refreshStaleTreeNode(node: TreeNode) {
@@ -1070,7 +1085,12 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
-      const cacheKey = schemaCacheKey(connectionId, database, "sqlserver-objects");
+      const simpleObjectDisplay = useSettingsStore().editorSettings.sidebarObjectDisplay === "simple";
+      const cacheKey = schemaCacheKey(
+        connectionId,
+        database,
+        simpleObjectDisplay ? "sqlserver-objects-simple-v2" : "sqlserver-objects-grouped-v2",
+      );
       if (!options?.force) {
         const cached = await loadPersistedTreeChildren(node, cacheKey);
         if (cached.hit) {
@@ -1079,12 +1099,14 @@ export const useConnectionStore = defineStore("connection", () => {
         }
       }
 
-      const [schemas, defaultSchemaObjects] = await Promise.all([
-        api.listSchemas(connectionId, database),
-        api.listObjects(connectionId, database, SQLSERVER_DEFAULT_SCHEMA),
-      ]);
+      const config = getConfig(connectionId);
+      const schemas = await api.listSchemas(connectionId, database);
+      const defaultSchemaObjects = simpleObjectDisplay
+        ? await api.listObjects(connectionId, database, SQLSERVER_DEFAULT_SCHEMA)
+        : [];
       const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas, defaultSchemaObjects, {
-        simpleObjectDisplay: useSettingsStore().editorSettings.sidebarObjectDisplay === "simple",
+        lazyObjectTypes: simpleObjectDisplay ? undefined : supportedSidebarObjectTypes(config),
+        simpleObjectDisplay,
       });
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
@@ -1105,7 +1127,13 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
-      const cacheKey = schemaCacheKey(connectionId, database, schema || "", "objects");
+      const simpleObjectDisplay = useSettingsStore().editorSettings.sidebarObjectDisplay === "simple";
+      const cacheKey = schemaCacheKey(
+        connectionId,
+        database,
+        schema || "",
+        simpleObjectDisplay ? "objects-simple-v2" : "objects-grouped-v2",
+      );
       if (!options?.force) {
         const cached = await loadPersistedTreeChildren(node, cacheKey);
         if (cached.hit) {
@@ -1117,18 +1145,14 @@ export const useConnectionStore = defineStore("connection", () => {
       const config = getConfig(connectionId);
       const querySchema = connectionObjectTreeQuerySchema(config, database, schema);
       const effectiveSchema = connectionObjectTreeNodeSchema(config, database, schema);
-      const simpleObjectDisplay = useSettingsStore().editorSettings.sidebarObjectDisplay === "simple";
       let children: TreeNode[];
       if (simpleObjectDisplay) {
-        const tables = await api.listTables(connectionId, database, querySchema);
-        children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
-      } else {
         try {
           const [objects, tables] = await Promise.all([
             api.listObjects(connectionId, database, querySchema),
             api.listTables(connectionId, database, querySchema),
           ]);
-          children = buildGroupedObjectTreeNodes({
+          children = buildSimpleObjectTreeNodes({
             nodeId,
             connectionId,
             database,
@@ -1139,6 +1163,14 @@ export const useConnectionStore = defineStore("connection", () => {
           const tables = await api.listTables(connectionId, database, querySchema);
           children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
         }
+      } else {
+        children = buildObjectGroupPlaceholderNodes({
+          nodeId,
+          connectionId,
+          database,
+          schema: effectiveSchema,
+          objectTypes: supportedSidebarObjectTypes(config),
+        });
       }
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
@@ -1149,6 +1181,61 @@ export const useConnectionStore = defineStore("connection", () => {
     } finally {
       node.isLoading = false;
     }
+  }
+
+  async function loadObjectGroupChildren(node: TreeNode, options?: LoadTreeOptions) {
+    if (!node.connectionId || !hasTreeNodeDatabaseContext(node)) return;
+    node.isLoading = true;
+    try {
+      await ensureConnected(node.connectionId);
+      if (useCachedChildren(node, options)) return;
+      const objectTypes = objectTypesForGroupNode(node.type);
+      const parentNodeId = objectGroupRefreshParentId(node);
+      if (!objectTypes || !parentNodeId) return;
+
+      const config = getConfig(node.connectionId);
+      const querySchema = connectionObjectTreeQuerySchema(config, node.database, node.schema);
+      const effectiveSchema = connectionObjectTreeNodeSchema(config, node.database, node.schema);
+      const cacheKey = schemaCacheKey(node.connectionId, node.database, node.schema || "", node.type, "objects-v1");
+      if (!options?.force) {
+        const cached = await loadPersistedTreeChildren(node, cacheKey);
+        if (cached.hit) {
+          if (cached.isStale) refreshStaleTreeNode(node);
+          return;
+        }
+      }
+
+      const wantsOnlyTablesOrViews = objectTypes.every((objectType) => objectType === "TABLE" || objectType === "VIEW");
+      const objects = wantsOnlyTablesOrViews
+        ? mergeTableInfosIntoObjects(
+            [],
+            await api.listTables(node.connectionId, node.database, querySchema),
+            effectiveSchema,
+          )
+        : await api.listObjects(node.connectionId, node.database, querySchema, objectTypes);
+      const grouped = buildGroupedObjectTreeNodes({
+        nodeId: parentNodeId,
+        connectionId: node.connectionId,
+        database: node.database,
+        schema: effectiveSchema,
+        objects: objects.filter((object) => objectTypes.includes(normalizedObjectTreeKind(object.object_type))),
+      });
+      const refreshedGroup = grouped.find((group) => group.type === node.type);
+      const children = refreshedGroup?.children ?? [];
+      node.objectCount = refreshedGroup?.objectCount ?? children.length;
+      setChildren(node, children);
+      await savePersistedTreeChildren(cacheKey, children);
+      node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(node.connectionId, e);
+      throw e;
+    } finally {
+      node.isLoading = false;
+    }
+  }
+
+  function normalizedObjectTreeKind(type: string): DatabaseObjectTreeKind {
+    return normalizeSidebarObjectKind(type);
   }
 
   async function loadTableGroups(
@@ -1431,9 +1518,10 @@ export const useConnectionStore = defineStore("connection", () => {
       node.type === "group-views" ||
       node.type === "group-procedures" ||
       node.type === "group-functions" ||
-      node.type === "group-packages" ||
-      node.type === "group-partitions"
+      node.type === "group-packages"
     ) {
+      await loadObjectGroupChildren(node, options);
+    } else if (node.type === "group-partitions") {
       node.isExpanded = true;
     }
   }
@@ -1448,6 +1536,12 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function refreshTreeNode(node: TreeNode) {
+    if (objectTypesForGroupNode(node.type)) {
+      clearLoadedChildrenCache(node.id);
+      await loadObjectGroupChildren(node, { force: true });
+      return;
+    }
+
     const parentId = objectGroupRefreshParentId(node);
     const parentNode = parentId ? findNode(treeNodes.value, parentId) : null;
     if (parentNode) {
@@ -2166,6 +2260,7 @@ export const useConnectionStore = defineStore("connection", () => {
     loadSchemas,
     loadSqlServerDatabaseObjects,
     loadTables,
+    loadObjectGroupChildren,
     loadTableGroups,
     loadColumns,
     loadIndexes,
