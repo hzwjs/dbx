@@ -15,7 +15,6 @@ const manualChunks: Record<string, string[]> = {
     "@codemirror/commands",
     "@codemirror/theme-one-dark",
   ],
-  "sql-formatter": ["sql-formatter"],
   "vue-echarts": ["vue-echarts"],
   ui: ["reka-ui"],
   marked: ["marked"],

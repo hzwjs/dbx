@@ -1,3 +1,5 @@
+import { format } from "sql-formatter";
+
 export type SqlFormatDialect = "mysql" | "postgres" | "sqlite" | "sqlserver" | "generic";
 
 function formatterLanguage(dialect: SqlFormatDialect) {
@@ -17,7 +19,6 @@ function formatterLanguage(dialect: SqlFormatDialect) {
 
 export async function formatSqlText(sql: string, dialect: SqlFormatDialect = "generic"): Promise<string> {
   if (!sql.trim()) return sql;
-  const { format } = await import("sql-formatter");
   return format(sql, {
     language: formatterLanguage(dialect),
     keywordCase: "upper",
