@@ -118,6 +118,45 @@ fn builds_mysql_column_and_index_changes() {
 }
 
 #[test]
+fn builds_highgo_foreign_key_changes_with_postgres_syntax() {
+    let mut old_fk = foreign_key("orders_user_id_fkey", "user_id", "users", "id");
+    old_fk.marked_for_drop = true;
+    old_fk.original = Some(ForeignKeyInfo {
+        name: "orders_user_id_fkey".to_string(),
+        column: "user_id".to_string(),
+        ref_schema: Some("public".to_string()),
+        ref_table: "users".to_string(),
+        ref_column: "id".to_string(),
+        on_update: None,
+        on_delete: None,
+    });
+    let mut new_fk = foreign_key("orders_account_id_fkey", "account_id", "accounts", "id");
+    new_fk.ref_schema = "crm".to_string();
+    new_fk.on_delete = "CASCADE".to_string();
+
+    let result = build_table_structure_change_sql(TableStructureSqlOptions {
+        database_type: Some(DatabaseType::Highgo),
+        schema: Some("public".to_string()),
+        table_name: "orders".to_string(),
+        columns: Vec::new(),
+        indexes: Vec::new(),
+        foreign_keys: vec![old_fk, new_fk],
+        triggers: Vec::new(),
+        table_comment: None,
+        original_table_comment: None,
+    });
+
+    assert_eq!(result.warnings, Vec::<String>::new());
+    assert_eq!(
+        result.statements,
+        vec![
+            "ALTER TABLE \"public\".\"orders\" DROP CONSTRAINT \"orders_user_id_fkey\";",
+            "ALTER TABLE \"public\".\"orders\" ADD CONSTRAINT \"orders_account_id_fkey\" FOREIGN KEY (\"account_id\") REFERENCES \"crm\".\"accounts\" (\"id\") ON DELETE CASCADE;",
+        ]
+    );
+}
+
+#[test]
 fn builds_informix_column_and_index_changes() {
     let mut renamed = column("display_name");
     renamed.data_type = "varchar(120)".to_string();

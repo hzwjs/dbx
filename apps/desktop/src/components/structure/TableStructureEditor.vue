@@ -716,7 +716,7 @@ function canDropIndex(index: EditableStructureIndex): boolean {
   return !!index.original && !index.isPrimary && structureCapabilities.value.dropIndex;
 }
 
-const canEditMysqlForeignKeys = computed(() => structureDialect.value === "mysql");
+const canEditForeignKeys = computed(() => structureCapabilities.value.foreignKey);
 const canEditMysqlTriggers = computed(() => structureDialect.value === "mysql");
 
 function generatedForeignKeyName(column = ""): string {
@@ -736,7 +736,7 @@ function generatedForeignKeyName(column = ""): string {
 }
 
 function addForeignKey() {
-  if (!canEditMysqlForeignKeys.value) return;
+  if (!canEditForeignKeys.value) return;
   activeTab.value = "foreignKeys";
   foreignKeys.value.push({
     id: `new:${uuid()}`,
@@ -761,7 +761,7 @@ function toggleDropForeignKey(foreignKey: EditableStructureForeignKey) {
 }
 
 function canEditForeignKeyDraft(foreignKey: EditableStructureForeignKey): boolean {
-  return canEditMysqlForeignKeys.value && !foreignKey.markedForDrop;
+  return canEditForeignKeys.value && !foreignKey.markedForDrop;
 }
 
 function addTrigger() {
@@ -864,7 +864,7 @@ function addItemForActiveTab(): boolean {
     addIndex();
     return true;
   }
-  if (activeTab.value === "foreignKeys" && canEditMysqlForeignKeys.value) {
+  if (activeTab.value === "foreignKeys" && canEditForeignKeys.value) {
     addForeignKey();
     return true;
   }
@@ -1027,7 +1027,7 @@ watch(activeTab, (tab) => {
                 <Plus :class="structureIconClass" />
                 {{ t("structureEditor.addIndex") }}
               </Button>
-              <Button v-if="activeTab === 'foreignKeys'" size="sm" :class="structureToolbarButtonClass" :disabled="!canEditMysqlForeignKeys" @click="addForeignKey">
+              <Button v-if="activeTab === 'foreignKeys'" size="sm" :class="structureToolbarButtonClass" :disabled="!canEditForeignKeys" @click="addForeignKey">
                 <Plus :class="structureIconClass" />
                 {{ t("structureEditor.addForeignKey") }}
               </Button>
