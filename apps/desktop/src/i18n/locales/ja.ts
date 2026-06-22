@@ -2626,10 +2626,11 @@ export default {
   },
   databaseExport: {
     title: "データベースをエクスポート",
+    options: "オプション",
     includeStructure: "テーブル構造 (DDL)",
     dropTableIfExists: "DDLの前にDROP TABLE IF EXISTSを追加",
     includeData: "テーブルデータ (INSERT)",
-    includeObjects: "ビュー / プロシージャ / 関数",
+    includeObjects: "ビュー / プロシージャ / 関数 / シーケンス",
     tableSelection: "テーブル",
     selectedTables: "{selected}/{total}件選択中",
     selectAllTables: "すべて選択",

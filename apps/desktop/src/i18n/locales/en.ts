@@ -2672,10 +2672,11 @@ export default {
   },
   databaseExport: {
     title: "Export Database",
+    options: "Options",
     includeStructure: "Table structure (DDL)",
     dropTableIfExists: "Add DROP TABLE IF EXISTS before DDL",
     includeData: "Table data (INSERT)",
-    includeObjects: "Views / Procedures / Functions",
+    includeObjects: "Views / Procedures / Functions / Sequences",
     tableSelection: "Tables",
     selectedTables: "{selected}/{total} selected",
     selectAllTables: "Select all",

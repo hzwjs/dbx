@@ -2405,10 +2405,11 @@ export default {
   },
   databaseExport: {
     title: "匯出資料庫",
+    options: "選項",
     includeStructure: "資料表結構 (DDL)",
     dropTableIfExists: "匯出前新增 DROP TABLE IF EXISTS",
     includeData: "資料表資料 (INSERT)",
-    includeObjects: "檢視 / 預存程序 / 函式",
+    includeObjects: "檢視 / 預存程序 / 函式 / 序列",
     tableSelection: "資料表",
     selectedTables: "已選擇 {selected}/{total}",
     selectAllTables: "全選",
