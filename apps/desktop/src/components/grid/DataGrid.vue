@@ -87,7 +87,7 @@ import type { BuildSingleColumnAlterSqlOptions } from "@/lib/tableStructureEdito
 import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { uuid } from "@/lib/utils";
 import { resolveHeaderColumnType } from "@/lib/dataGridColumnType";
-import { canEditExistingTableRows, hiveTablePropertiesIndicateTransactional, isHiddenGridColumn, isTdengineExistingRowReadonlyColumn, usesSyntheticRowIdKey } from "@/lib/tableEditing";
+import { canEditExistingTableRows, canUseKeylessRowPredicate, hiveTablePropertiesIndicateTransactional, isHiddenGridColumn, isTdengineExistingRowReadonlyColumn, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { buildDataGridContextFilterCondition, buildDataGridCountSql, buildHiveTablePropertiesSql, type DataGridContextFilterMode } from "@/lib/dataGridSql";
 import {
   buildVisibleTransposeRows,
@@ -2345,6 +2345,7 @@ const canJumpLastPage = computed(() => canGoNextPage.value && (hasKnownTotalRowC
 const totalRowCountBusy = computed(() => props.totalRowCountLoading === true || manualTotalRowCountLoading.value);
 const canCalculateTotalRowCount = computed(() => !isResultsContext.value && !!props.connectionId && (!!props.tableMeta || !!props.countSql));
 const showQueryEditReadyBadge = computed(() => isResultsContext.value && hasData.value && !!props.editable && !!props.tableMeta);
+const showKeylessEditWarning = computed(() => !!props.editable && !!props.tableMeta && canUseKeylessRowPredicate(props.databaseType, props.tableMeta.primaryKeys ?? []));
 const canShowWhereSearch = computed(() => !!props.onExecuteSql && !isResultsContext.value);
 const canUseWhereSearch = computed(() => !!props.tableMeta && !!props.onExecuteSql && !isResultsContext.value);
 type DataGridTableMeta = NonNullable<typeof props.tableMeta>;
@@ -6718,6 +6719,17 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" class="max-w-sm">
                   {{ t("grid.queryEditReadyHint", { table: tableMeta?.tableName }) }}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip v-if="showKeylessEditWarning">
+                <TooltipTrigger as-child>
+                  <div class="flex h-5 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    <KeyRound class="h-3 w-3" />
+                    {{ t("grid.keylessEditWarning") }}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="max-w-sm">
+                  {{ t("grid.keylessEditWarningHint") }}
                 </TooltipContent>
               </Tooltip>
               <Button v-if="props.context !== 'results'" variant="ghost" size="sm" class="h-5 text-xs px-1.5 shrink-0" :disabled="isSaving" @click="onToolbarRefresh">
