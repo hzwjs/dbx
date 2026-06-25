@@ -24,7 +24,7 @@ import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { isSchemaAware, normalizeSidebarObjectKind, sidebarObjectKindsForDatabase, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
 import { connectionObjectTreeNodeSchema, connectionObjectTreeQuerySchema, connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import { buildDatabaseTreeNodes, buildDuckDbConnectionTreeNodes, sortSidebarNames, shouldIncludeDefaultDatabaseNode } from "@/lib/databaseTree";
-import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
+import { buildSqlServerDatabaseTreeNodes } from "@/lib/sqlServerTree";
 import { findDatabaseTreeNode } from "@/lib/treeRefreshTarget";
 import { shouldMarkDisconnected } from "@/lib/connectionHealth";
 import { connectionAttemptOriginalErrorMessage, connectionAttemptTimeoutMessage, connectionAttemptTimeoutMs } from "@/lib/connectionAttemptTimeout";
@@ -1658,7 +1658,7 @@ export const useConnectionStore = defineStore("connection", () => {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
       const simpleObjectDisplay = useSettingsStore().editorSettings.sidebarObjectDisplay === "simple";
-      const cacheKey = schemaCacheKey(connectionId, database, simpleObjectDisplay ? "sqlserver-objects-simple-v3" : "sqlserver-objects-grouped-v3");
+      const cacheKey = schemaCacheKey(connectionId, database, simpleObjectDisplay ? "sqlserver-schemas-simple-v4" : "sqlserver-schemas-grouped-v4");
       if (!options?.force) {
         const cached = await loadPersistedTreeChildren(node, cacheKey);
         if (cached.hit) {
@@ -1669,11 +1669,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
       const config = getConfig(connectionId);
       const schemas = filterSchemaNamesForConnection(await api.listSchemas(connectionId, database), config, database);
-      const defaultSchemaObjects = simpleObjectDisplay ? await api.listObjects(connectionId, database, SQLSERVER_DEFAULT_SCHEMA) : [];
-      const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas, defaultSchemaObjects, {
-        lazyObjectTypes: simpleObjectDisplay ? undefined : supportedSidebarObjectTypes(config),
-        simpleObjectDisplay,
-      });
+      const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas);
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
@@ -2315,8 +2311,7 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function refreshObjectListTreeNode(connectionId: string, database: string, schema?: string) {
-    const config = getConfig(connectionId);
-    const shouldRefreshSchemaNode = schema && !(config?.db_type === "sqlserver" && schema.toLowerCase() === "dbo");
+    const shouldRefreshSchemaNode = !!schema;
     const node = shouldRefreshSchemaNode ? findNode(treeNodes.value, `${connectionId}:${database}:${schema}`) : null;
     if (node) {
       await refreshTreeNode(node);
