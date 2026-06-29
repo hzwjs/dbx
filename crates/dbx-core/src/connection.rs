@@ -3377,6 +3377,7 @@ mod tests {
     async fn duckdb_client_session_reuses_base_pool_to_avoid_file_locks() {
         let (state, dir) = test_app_state().await;
         let db_path = dir.join("session.duckdb");
+        duckdb::Connection::open(&db_path).unwrap();
         let mut config = mysql_config(None);
         config.id = "duckdb-conn".to_string();
         config.name = "DuckDB".to_string();
