@@ -1,5 +1,6 @@
 import * as api from "@/lib/api";
 import { effectiveDatabaseTypeForConnection, metadataSchemaForConnection } from "@/lib/jdbcDialect";
+import { isNoSnapshotErrorResult } from "@/lib/queryResultError";
 import { buildTableSelectSql } from "@/lib/tableSelectSql";
 import { editableRowIdentifierColumns, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -92,6 +93,24 @@ async function openTableTarget(target: NavigationTarget, options: { tableInfoTab
       primaryKeys: [],
     });
     await queryStore.executeTabSql(tabId, sql);
+    // executeTabSql surfaces query failures as an "Error" result instead of throwing.
+    // A snapshot-less lake table fails the data preview above but its metadata still
+    // reads fine — retry with LIMIT 0 so the user sees the table structure (columns +
+    // empty grid) rather than a cryptic server error. The flag also skips the
+    // synthetic-row-id re-query below, which is another data read that would fail
+    // the same way on a snapshot-less table.
+    const fellBackToLimitZero = isNoSnapshotErrorResult(queryStore.tabs.find((tab) => tab.id === tabId)?.result);
+    if (fellBackToLimitZero) {
+      const emptySql = await buildTableSelectSql({
+        databaseType: effectiveDbType,
+        schema: target.schema,
+        tableName: target.tableName,
+        whereInput: target.whereInput,
+        limit: 0,
+      });
+      queryStore.updateSql(tabId, emptySql);
+      await queryStore.executeTabSql(tabId, emptySql);
+    }
     try {
       const columns = await api.getColumns(target.connectionId, target.database, querySchema, target.tableName);
       const indexes = await api.listIndexes(target.connectionId, target.database, querySchema, target.tableName).catch(() => []);
@@ -104,7 +123,7 @@ async function openTableTarget(target: NavigationTarget, options: { tableInfoTab
         columns,
         primaryKeys,
       });
-      if (useRowId || config.db_type === "tdengine") {
+      if (!fellBackToLimitZero && (useRowId || config.db_type === "tdengine")) {
         const newSql = await buildTableSelectSql({
           databaseType: effectiveDbType,
           schema: target.schema,
