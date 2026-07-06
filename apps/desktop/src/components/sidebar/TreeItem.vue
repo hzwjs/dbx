@@ -3790,8 +3790,22 @@ function openTableImport() {
 
 function openStructureEditor() {
   const node = props.node;
-  if (node.type !== "table" || !node.connectionId || !node.database) return;
-  queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.label);
+  if (!node.connectionId || !node.database) return;
+  if (node.type === "table") {
+    queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.label);
+    return;
+  }
+  if (node.type === "column" && node.tableName) {
+    const columnName = tableChildDropObjectName(node).trim();
+    if (!columnName) return;
+    queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.tableName, "columns", { kind: "column", name: columnName });
+    return;
+  }
+  if (node.type === "index" && node.tableName) {
+    const indexName = tableChildDropObjectName(node).trim();
+    if (!indexName) return;
+    queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.tableName, "indexes", { kind: "index", name: indexName });
+  }
 }
 
 function openFieldLineage() {
@@ -3835,7 +3849,8 @@ const canOpenTableImport = computed(() => {
   return props.node.type === "table" && !isSqlServerLinkedNode(props.node) && !!props.node.database && supportsTableImport(currentDatabaseType());
 });
 const canOpenStructureEditor = computed(() => {
-  return props.node.type === "table" && !isSqlServerLinkedNode(props.node) && !!props.node.database && supportsTableStructureEditing(currentTableStructureDatabaseType());
+  const editableNode = props.node.type === "table" || ((props.node.type === "column" || props.node.type === "index") && !!props.node.tableName);
+  return editableNode && !isSqlServerLinkedNode(props.node) && !!props.node.connectionId && !!props.node.database && supportsTableStructureEditing(currentTableStructureDatabaseType());
 });
 const canOpenFieldLineage = computed(() => {
   return props.node.type === "column" && !!props.node.database && !!props.node.tableName && supportsFieldLineage(currentDatabaseType());
@@ -4756,9 +4771,16 @@ function treeItemMenuItems(): ContextMenuItem[] {
   // 7. Column
   if (node.type === "column") {
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
+    const columnActions: ContextMenuItem[] = [];
+    if (canOpenStructureEditor.value) {
+      columnActions.push({ label: t("contextMenu.editColumn"), action: openStructureEditor, icon: PencilRuler });
+    }
     if (canOpenFieldLineage.value) {
+      columnActions.push({ label: t("lineage.open"), action: openFieldLineage, icon: Network });
+    }
+    if (columnActions.length > 0) {
       items.push({ label: "", separator: true });
-      items.push({ label: t("lineage.open"), action: openFieldLineage, icon: Network });
+      items.push(...columnActions);
     }
     if (canDropTableChildObject.value) {
       items.push({ label: "", separator: true });
@@ -4775,6 +4797,10 @@ function treeItemMenuItems(): ContextMenuItem[] {
 
   if (node.type === "index" || node.type === "fkey" || node.type === "trigger") {
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
+    if (node.type === "index" && canOpenStructureEditor.value) {
+      items.push({ label: "", separator: true });
+      items.push({ label: t("contextMenu.editIndex"), action: openStructureEditor, icon: PencilRuler });
+    }
     if (node.type === "index" && canDropMongoIndex.value) {
       items.push({ label: "", separator: true });
       items.push({

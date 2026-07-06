@@ -3526,19 +3526,26 @@ test("reopening table structure tabs records the requested initial tab", () => {
     setActivePinia(createPinia());
     const store = useQueryStore();
 
-    const structureId = store.openTableStructure("conn-1", "db", "public", "users", "indexes");
+    const structureId = store.openTableStructure("conn-1", "db", "public", "users", "indexes", { kind: "index", name: "idx_users_email" });
     const firstTab = store.tabs.find((item) => item.id === structureId);
 
     assert.equal(firstTab?.structureInitialTab, "indexes");
     assert.equal(firstTab?.structureInitialTabRequestId, 1);
+    assert.deepEqual(firstTab?.structureInitialTarget, { kind: "index", name: "idx_users_email" });
 
-    const reusedStructureId = store.openTableStructure("conn-1", "db", "public", "users", "foreignKeys");
+    const reusedStructureId = store.openTableStructure("conn-1", "db", "public", "users", "columns", { kind: "column", name: "email" });
     const reusedTab = store.tabs.find((item) => item.id === reusedStructureId);
 
     assert.equal(reusedStructureId, structureId);
-    assert.equal(reusedTab?.structureInitialTab, "foreignKeys");
+    assert.equal(reusedTab?.structureInitialTab, "columns");
     assert.equal(reusedTab?.structureInitialTabRequestId, 2);
+    assert.deepEqual(reusedTab?.structureInitialTarget, { kind: "column", name: "email" });
     assert.equal(store.activeTabId, structureId);
+
+    store.openTableStructure("conn-1", "db", "public", "users", "foreignKeys");
+    assert.equal(reusedTab?.structureInitialTab, "foreignKeys");
+    assert.equal(reusedTab?.structureInitialTabRequestId, 3);
+    assert.equal(reusedTab?.structureInitialTarget, undefined);
   } finally {
     restoreStorage();
   }

@@ -612,6 +612,11 @@ export interface TreeNode {
 
 export type TableInfoTab = "columns" | "indexes" | "foreignKeys" | "triggers" | "ddl";
 
+export interface TableStructureEditorTarget {
+  kind: "column" | "index";
+  name: string;
+}
+
 export interface TableStructureEditorDraft {
   activeTab: TableInfoTab;
   newTableName: string;
@@ -687,6 +692,7 @@ export interface QueryTab {
   structureTableName?: string;
   structureInitialTab?: TableInfoTab;
   structureInitialTabRequestId?: number;
+  structureInitialTarget?: TableStructureEditorTarget;
   structureDraft?: TableStructureEditorDraft;
   objectBrowser?: {
     schema?: string;
