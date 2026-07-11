@@ -78,7 +78,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import DdlViewDialog from "./DdlViewDialog.vue";
-import { formatSqlForDisplay, sqlFormatDialectForDbType, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
+import { sqlFormatDialectForDbType, type SqlFormatDialect } from "@/lib/sql/sqlFormatter";
 import { isCancelSearchShortcut } from "@/lib/editor/keyboardShortcuts";
 import { batchTableEmptyFeedback, buildBatchTableEmptyPlan, runBatchTableEmpty, type BatchTableEmptyPlanItem } from "@/lib/sidebar/batchTableEmpty";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1027,10 +1027,10 @@ async function openSource(row: ObjectBrowserRow) {
       source: result.source,
     });
     if (sidePanelGuard.isStale(epoch)) return;
-    const formatted = await formatSqlForDisplay(editable, sourceFormatDialect.value, settingsStore.editorSettings.sqlFormatter);
-    if (sidePanelGuard.isStale(epoch)) return;
+    // Viewing database source must preserve its original whitespace and comments;
+    // formatting remains an explicit editor action instead of altering it on open.
     sourceEditableText.value = editable;
-    sourceContent.value = formatted;
+    sourceContent.value = editable;
     sourceDraft.value = editable;
     sourceEditing.value = sourceCanEdit.value;
     if (!sourceCanEdit.value && row.type !== "SEQUENCE") {
