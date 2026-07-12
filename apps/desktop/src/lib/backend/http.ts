@@ -592,8 +592,8 @@ export async function completionAssistantSearch(request: CompletionAssistantRequ
   return post("/api/schema/completion-assistant", request);
 }
 
-export async function getObjectSource(connectionId: string, database: string, schema: string, name: string, objectType: ObjectSourceKind): Promise<ObjectSource> {
-  return get(`/api/schema/object-source?${qs({ connection_id: connectionId, database, schema, table: name, object_type: objectType })}`);
+export async function getObjectSource(connectionId: string, database: string, schema: string, name: string, objectType: ObjectSourceKind, signature?: string): Promise<ObjectSource> {
+  return get(`/api/schema/object-source?${qs({ connection_id: connectionId, database, schema, table: name, object_type: objectType, signature })}`);
 }
 
 export async function getColumns(connectionId: string, database: string, schema: string, table: string, catalog?: string): Promise<ColumnInfo[]> {

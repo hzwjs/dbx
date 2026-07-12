@@ -4526,7 +4526,8 @@ pub async fn get_table_ddl_core(
     }
     if matches!(object_type, Some(db::ObjectSourceKind::View)) {
         let source =
-            get_object_source_core(state, connection_id, database, schema, table, db::ObjectSourceKind::View).await?;
+            get_object_source_core(state, connection_id, database, schema, table, db::ObjectSourceKind::View, None)
+                .await?;
         let database_type = connection_config(state, connection_id).await.map(|config| config.db_type);
         return Ok(crate::object_source_sql::build_view_ddl_sql(crate::object_source_sql::BuildViewDdlInput {
             database_type,
@@ -4543,6 +4544,7 @@ pub async fn get_table_ddl_core(
             schema,
             table,
             db::ObjectSourceKind::MaterializedView,
+            None,
         )
         .await?;
         return Ok(source.source);
@@ -4801,12 +4803,22 @@ pub fn sqlserver_object_source_sql(schema: &str, name: &str, kind: &db::ObjectSo
     )
 }
 
-pub fn postgres_object_source_sql(schema: &str, name: &str, kind: &db::ObjectSourceKind) -> String {
-    postgres_object_source_sql_inner(schema, name, kind, true)
+pub fn postgres_object_source_sql(
+    schema: &str,
+    name: &str,
+    kind: &db::ObjectSourceKind,
+    signature: Option<&str>,
+) -> String {
+    postgres_object_source_sql_inner(schema, name, kind, signature, true)
 }
 
-fn postgres_object_source_sql_without_relispopulated(schema: &str, name: &str, kind: &db::ObjectSourceKind) -> String {
-    postgres_object_source_sql_inner(schema, name, kind, false)
+fn postgres_object_source_sql_without_relispopulated(
+    schema: &str,
+    name: &str,
+    kind: &db::ObjectSourceKind,
+    signature: Option<&str>,
+) -> String {
+    postgres_object_source_sql_inner(schema, name, kind, signature, false)
 }
 
 fn postgres_function_object_source_sql_without_prokind(schema: &str, name: &str) -> String {
@@ -4825,6 +4837,7 @@ fn postgres_object_source_sql_inner(
     schema: &str,
     name: &str,
     kind: &db::ObjectSourceKind,
+    signature: Option<&str>,
     include_relispopulated: bool,
 ) -> String {
     match kind {
@@ -4856,15 +4869,19 @@ fn postgres_object_source_sql_inner(
         }
         db::ObjectSourceKind::Procedure | db::ObjectSourceKind::Function => {
             let prokind = if matches!(kind, db::ObjectSourceKind::Procedure) { "p" } else { "f" };
+            let signature_filter = signature
+                .map(|value| format!(" AND pg_get_function_identity_arguments(p.oid) = {}", sql_string(value)))
+                .unwrap_or_default();
             format!(
                 "SELECT pg_get_functiondef(p.oid) \
                  FROM pg_proc p \
                  JOIN pg_namespace n ON n.oid = p.pronamespace \
-                 WHERE n.nspname = {} AND p.proname = {} AND p.prokind = '{}' \
+                 WHERE n.nspname = {} AND p.proname = {} AND p.prokind = '{}'{} \
                  ORDER BY p.oid LIMIT 1",
                 sql_string(schema),
                 sql_string(name),
-                prokind
+                prokind,
+                signature_filter
             )
         }
         db::ObjectSourceKind::Sequence => {
@@ -4988,9 +5005,10 @@ pub async fn get_object_source_core(
     schema: &str,
     name: &str,
     object_type: db::ObjectSourceKind,
+    signature: Option<&str>,
 ) -> Result<db::ObjectSource, String> {
     retry_metadata_connection(state, connection_id, Some(database), || {
-        get_object_source_once(state, connection_id, database, schema, name, object_type.clone())
+        get_object_source_once(state, connection_id, database, schema, name, object_type.clone(), signature)
     })
     .await
 }
@@ -5002,6 +5020,7 @@ async fn get_object_source_once(
     schema: &str,
     name: &str,
     object_type: db::ObjectSourceKind,
+    signature: Option<&str>,
 ) -> Result<db::ObjectSource, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
     let db_config = connection_config(state, connection_id).await;
@@ -5069,7 +5088,7 @@ async fn get_object_source_once(
                     // only view
                     db::questdb::questdb_object_source(pool, name).await?
                 }
-                PoolKind::Postgres(pool) => postgres_object_source(pool, schema, name, &object_type).await?,
+                PoolKind::Postgres(pool) => postgres_object_source(pool, schema, name, &object_type, signature).await?,
                 PoolKind::Sqlite(pool) => first_string_cell(
                     db::sqlite::execute_query(pool, &sqlite_object_source_sql(name, &object_type)).await?,
                 )?,
@@ -5399,15 +5418,16 @@ async fn postgres_object_source(
     schema: &str,
     name: &str,
     object_type: &db::ObjectSourceKind,
+    signature: Option<&str>,
 ) -> Result<String, String> {
-    let sql = postgres_object_source_sql(schema, name, object_type);
+    let sql = postgres_object_source_sql(schema, name, object_type, signature);
     match db::postgres::execute_query(pool, &sql).await.and_then(first_string_cell) {
         Ok(source) => Ok(source),
         Err(primary_err)
             if postgres_missing_relispopulated_error(&primary_err)
                 && matches!(object_type, db::ObjectSourceKind::View | db::ObjectSourceKind::MaterializedView) =>
         {
-            let fallback_sql = postgres_object_source_sql_without_relispopulated(schema, name, object_type);
+            let fallback_sql = postgres_object_source_sql_without_relispopulated(schema, name, object_type, signature);
             db::postgres::execute_query(pool, &fallback_sql)
                 .await
                 .and_then(first_string_cell)
@@ -5465,7 +5485,7 @@ mod object_source_tests {
 
     #[test]
     fn builds_postgres_object_source_sql_for_views_and_functions() {
-        let view_sql = postgres_object_source_sql("public", "active_users", &ObjectSourceKind::View);
+        let view_sql = postgres_object_source_sql("public", "active_users", &ObjectSourceKind::View, None);
 
         assert!(view_sql.contains("CREATE MATERIALIZED VIEW"));
         assert!(view_sql.contains("CREATE OR REPLACE VIEW"));
@@ -5474,8 +5494,13 @@ mod object_source_tests {
         assert!(view_sql.contains("c.relname = 'active_users'"));
 
         assert_eq!(
-            postgres_object_source_sql("public", "recalc_score", &ObjectSourceKind::Function),
+            postgres_object_source_sql("public", "recalc_score", &ObjectSourceKind::Function, None),
             "SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = 'recalc_score' AND p.prokind = 'f' ORDER BY p.oid LIMIT 1"
+        );
+
+        assert_eq!(
+            postgres_object_source_sql("public", "recalc_score", &ObjectSourceKind::Function, Some("integer, integer")),
+            "SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = 'recalc_score' AND p.prokind = 'f' AND pg_get_function_identity_arguments(p.oid) = 'integer, integer' ORDER BY p.oid LIMIT 1"
         );
     }
 
@@ -5485,6 +5510,7 @@ mod object_source_tests {
             "public",
             "active_users",
             &ObjectSourceKind::MaterializedView,
+            None,
         );
 
         assert!(sql.contains("CREATE MATERIALIZED VIEW"));
@@ -5504,7 +5530,7 @@ mod object_source_tests {
 
     #[test]
     fn keeps_legacy_materialized_viewdef_when_it_already_contains_create_statement() {
-        let sql = postgres_object_source_sql("public", "active_users", &ObjectSourceKind::MaterializedView);
+        let sql = postgres_object_source_sql("public", "active_users", &ObjectSourceKind::MaterializedView, None);
 
         assert!(
             sql.contains(
@@ -5531,7 +5557,7 @@ mod object_source_tests {
 
     #[test]
     fn builds_postgres_view_source_sql_without_regclass_cast() {
-        let sql = postgres_object_source_sql("tenant's schema", "active users", &ObjectSourceKind::View);
+        let sql = postgres_object_source_sql("tenant's schema", "active users", &ObjectSourceKind::View, None);
 
         assert!(!sql.contains("::regclass"));
         assert!(sql.contains("pg_get_viewdef(c.oid, 0)"));

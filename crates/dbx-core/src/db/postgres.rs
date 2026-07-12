@@ -1808,7 +1808,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
          THEN pg_xact_commit_timestamp(p.xmin)::text END AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        CASE WHEN p.prokind = 'p' OR p.prosp THEN 2 ELSE 3 END AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1822,7 +1822,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
        NULL::text AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        CASE WHEN p.prokind = 'p' OR p.prosp THEN 2 ELSE 3 END AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1839,7 +1839,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
          THEN pg_xact_commit_timestamp(p.xmin)::text END AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        CASE p.prokind WHEN 'p' THEN 2 ELSE 3 END AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1853,7 +1853,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
        NULL::text AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        CASE p.prokind WHEN 'p' THEN 2 ELSE 3 END AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1870,7 +1870,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
          THEN pg_xact_commit_timestamp(p.xmin)::text END AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        CASE WHEN p.prosp THEN 2 ELSE 3 END AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1884,7 +1884,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
        NULL::text AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        CASE WHEN p.prosp THEN 2 ELSE 3 END AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1900,7 +1900,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
          THEN pg_xact_commit_timestamp(p.xmin)::text END AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        3 AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -1914,7 +1914,7 @@ fn list_object_routines_sql(include_timestamps: bool, has_proc_prokind: bool, ha
        NULL::text AS updated_at, \
        NULL::text AS parent_schema, \
        NULL::text AS parent_name, \
-       pg_get_function_arguments(p.oid) AS signature, \
+       pg_get_function_identity_arguments(p.oid) AS signature, \
        3 AS sort_order \
      FROM pg_catalog.pg_proc p \
      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
@@ -3899,7 +3899,7 @@ mod tests {
         assert!(sql.contains("parent_schema"));
         assert!(sql.contains("parent_name"));
         assert!(sql.contains("NULL::text AS signature"));
-        assert!(sql.contains("pg_get_function_arguments(p.oid) AS signature"));
+        assert!(sql.contains("pg_get_function_identity_arguments(p.oid) AS signature"));
         assert!(sql.contains("pc.relkind = 'p'"));
         assert!(sql.contains("pg_stat_file"));
         assert!(sql.contains("pg_xact_commit_timestamp"));
@@ -3946,7 +3946,7 @@ mod tests {
         assert!(!sql.contains("p.prosp"));
         assert!(sql.contains("NOT p.proisagg"));
         assert!(sql.contains("NOT p.proiswindow"));
-        assert!(sql.contains("pg_get_function_arguments(p.oid) AS signature"));
+        assert!(sql.contains("pg_get_function_identity_arguments(p.oid) AS signature"));
         assert!(sql.contains("'FUNCTION' AS object_type"));
         assert!(!sql.contains("'PROCEDURE'"));
     }
@@ -3959,7 +3959,7 @@ mod tests {
         assert!(sql.contains("CASE WHEN p.prosp THEN 2 ELSE 3 END AS sort_order"));
         assert!(sql.contains("NOT p.proisagg"));
         assert!(sql.contains("NOT p.proiswindow"));
-        assert!(sql.contains("pg_get_function_arguments(p.oid) AS signature"));
+        assert!(sql.contains("pg_get_function_identity_arguments(p.oid) AS signature"));
     }
 
     #[test]
@@ -3970,7 +3970,7 @@ mod tests {
         );
         assert!(sql.contains("CASE WHEN p.prokind = 'p' OR p.prosp THEN 2 ELSE 3 END AS sort_order"));
         assert!(sql.contains("p.prokind IN ('p','f') OR p.prosp"));
-        assert!(sql.contains("pg_get_function_arguments(p.oid) AS signature"));
+        assert!(sql.contains("pg_get_function_identity_arguments(p.oid) AS signature"));
     }
 
     #[test]

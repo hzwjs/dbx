@@ -1881,7 +1881,8 @@ function dropObjectSqlOptionsForNode(node: TreeNode): DropObjectSqlOptions | nul
     databaseType: tableStructureDatabaseTypeForNode(node),
     objectType: node.type === "view" ? "VIEW" : node.type === "materialized_view" ? "MATERIALIZED_VIEW" : node.type === "procedure" ? "PROCEDURE" : "FUNCTION",
     schema: node.schema,
-    name: node.label,
+    name: node.objectName || node.label,
+    signature: node.signature,
   };
 }
 
@@ -2402,7 +2403,7 @@ async function confirmRenameObject() {
     await connectionStore.ensureConnected(node.connectionId);
     if (supportsSourceBackedRoutineRename(dbType, objectType as any)) {
       const schema = node.schema || node.database;
-      const source = await api.getObjectSource(node.connectionId, node.database, schema, node.label, objectType as any);
+      const source = await api.getObjectSource(node.connectionId, node.database, schema, node.objectName || node.label, objectType as any, node.signature);
       const statements = await buildRoutineRenameObjectSourceStatements({
         databaseType: dbType!,
         objectType: objectType as any,
@@ -5938,7 +5939,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
     :connection-id="objectSourceTarget.node.connectionId!"
     :database="objectSourceTarget.node.database!"
     :schema="objectSourceTarget.node.schema"
-    :name="objectSourceTarget.node.label"
+    :name="objectSourceTarget.node.objectName || objectSourceTarget.node.label"
+    :signature="objectSourceTarget.node.signature"
     :object-type="objectSourceType"
     :database-type="objectSourceDatabaseType"
     :dialect="objectSourceDialect"

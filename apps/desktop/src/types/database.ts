@@ -659,6 +659,8 @@ export interface TreeNode {
   nacosNamespaceName?: string;
   schema?: string;
   tableName?: string;
+  objectName?: string;
+  signature?: string;
   tableType?: string;
   comment?: string | null;
   objectCount?: number;

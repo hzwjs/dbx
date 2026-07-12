@@ -1,12 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { appendTableTreeLoadMoreNode, buildTableTreeNodes, mergeTableTreePageChildren, tablePartitionGroups, withoutTableTreeLoadMoreNodes } from "@/lib/table/tableTree";
-import type { TableInfo, TreeNode } from "@/types/database";
+import { appendTableTreeLoadMoreNode, buildSimpleObjectTreeNodes, buildTableTreeNodes, mergeTableTreePageChildren, tablePartitionGroups, withoutTableTreeLoadMoreNodes } from "@/lib/table/tableTree";
+import type { ObjectInfo, TableInfo, TreeNode } from "@/types/database";
 
 const context = {
   nodeId: "connection:db",
   connectionId: "connection",
   database: "db",
 };
+
+describe("PostgreSQL overloaded routines", () => {
+  it("keeps routines with the same name distinct by identity arguments", () => {
+    const objects: ObjectInfo[] = [
+      { name: "calc", object_type: "FUNCTION", schema: "public", signature: "integer" },
+      { name: "calc", object_type: "FUNCTION", schema: "public", signature: "integer, integer" },
+      { name: "calc", object_type: "FUNCTION", schema: "public", signature: "numeric" },
+    ];
+
+    const nodes = buildSimpleObjectTreeNodes({ ...context, schema: "public", objects });
+
+    expect(nodes.map((node) => ({ label: node.label, objectName: node.objectName, signature: node.signature }))).toEqual(
+      expect.arrayContaining([
+        { label: "calc(integer)", objectName: "calc", signature: "integer" },
+        { label: "calc(integer, integer)", objectName: "calc", signature: "integer, integer" },
+        { label: "calc(numeric)", objectName: "calc", signature: "numeric" },
+      ]),
+    );
+    expect(new Set(nodes.map((node) => node.id)).size).toBe(3);
+  });
+});
 
 describe("TDengine table hierarchy", () => {
   it("groups child tables under their supertable and keeps ordinary tables flat", () => {
