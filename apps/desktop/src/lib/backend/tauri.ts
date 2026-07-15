@@ -1466,7 +1466,7 @@ export interface RedisStreamEntry {
 
 export type RedisValueData =
   | { kind: "string"; content: RedisBlob }
-  | { kind: "json"; value: unknown }
+  | { kind: "json"; value: string }
   | { kind: "list"; items: RedisListItem[]; total: number; scan_cursor?: number }
   | { kind: "set"; items: RedisSetItem[]; total: number; scan_cursor?: number }
   | { kind: "hash"; items: RedisHashItem[]; total: number; scan_cursor?: number }
