@@ -1378,15 +1378,14 @@ fn sqlserver_list_tables_sql(
             }
         })
         .unwrap_or_default();
-    let schema_escaped = schema.replace('\'', "''");
     let base_columns = "o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END, ep.value AS TABLE_COMMENT";
     let base_from = "FROM sys.objects o \
          JOIN sys.schemas s ON s.schema_id = o.schema_id \
          OUTER APPLY (SELECT CAST(ep.value AS NVARCHAR(MAX)) AS value FROM sys.extended_properties ep \
            WHERE ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = N'MS_Description') ep";
     let object_visibility = sqlserver_visible_object_predicate();
-    let base_where =
-        format!("WHERE s.name = '{schema_escaped}' AND o.type IN ('U','V') AND {object_visibility} {filter_clause}");
+    let schema_filter = sqlserver_schema_name_predicate(schema, "s.name");
+    let base_where = format!("WHERE {schema_filter} AND o.type IN ('U','V') AND {object_visibility} {filter_clause}");
     let order_by = "ORDER BY o.name";
 
     // Use SELECT TOP for broad SQL Server version compatibility.
@@ -1408,6 +1407,18 @@ fn sqlserver_list_tables_sql(
             format!("SELECT {base_columns} {base_from} {base_where} {order_by}")
         }
     }
+}
+
+fn sqlserver_schema_name_predicate(schema: &str, schema_name_expression: &str) -> String {
+    if schema.trim().is_empty() {
+        // SQL Server resolves unqualified objects through the user's default schema.
+        // A configured default can be missing, so match DBeaver and fall back to dbo.
+        return format!(
+            "{schema_name_expression} = COALESCE((SELECT default_schema.name FROM sys.schemas default_schema WHERE default_schema.name = SCHEMA_NAME()), N'dbo')"
+        );
+    }
+
+    format!("{schema_name_expression} = N'{}'", schema.replace('\'', "''"))
 }
 
 fn escape_like_literal(value: &str) -> String {
@@ -1624,8 +1635,8 @@ fn sqlserver_column_metadata_from_row(row: &Row) -> SqlServerColumnMetadata {
 }
 
 fn sqlserver_columns_sql(schema: &str, table: &str) -> String {
-    let s = schema.replace('\'', "''");
     let t = table.replace('\'', "''");
+    let schema_filter = sqlserver_schema_name_predicate(schema, "s.name");
     // COLUMNPROPERTY keeps hidden/generated flags separate and returns NULL on
     // SQL Server versions that do not expose a newer property.
     format!(
@@ -1665,7 +1676,7 @@ fn sqlserver_columns_sql(schema: &str, table: &str) -> String {
            WHERE i.is_primary_key = 1 \
          ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
          OUTER APPLY (SELECT CAST(ep.value AS NVARCHAR(MAX)) AS value FROM sys.extended_properties ep WHERE ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = N'MS_Description') ep \
-         WHERE s.name = '{s}' AND o.name = '{t}' AND o.type IN ('U','V') \
+         WHERE {schema_filter} AND o.name = '{t}' AND o.type IN ('U','V') \
          ORDER BY c.column_id"
     )
 }
@@ -2126,8 +2137,8 @@ mod tests {
         requires_simple_query_batch, sqlserver_batch_can_use_execute, sqlserver_cell_to_json, sqlserver_columns_sql,
         sqlserver_completion_assistant_sql, sqlserver_dml_output_returns_rows, sqlserver_hidden_schema_names,
         sqlserver_indexes_sql, sqlserver_list_objects_sql, sqlserver_list_schemas_sql, sqlserver_list_tables_sql,
-        sqlserver_table_comment_sql, sqlserver_visible_object_predicate, strip_dbx_sqlserver_row_number_column,
-        SqlServerDescribedColumn, SqlServerResultSet,
+        sqlserver_schema_name_predicate, sqlserver_table_comment_sql, sqlserver_visible_object_predicate,
+        strip_dbx_sqlserver_row_number_column, SqlServerDescribedColumn, SqlServerResultSet,
     };
     use crate::types::{
         CompletionAssistantMatchMode, CompletionAssistantObjectKind, CompletionAssistantRequest, QueryResult,
@@ -2498,10 +2509,32 @@ mod tests {
         let columns_sql = sqlserver_columns_sql("d'bo", "t'able");
         let indexes_sql = sqlserver_indexes_sql("d'bo", "t'able");
 
-        assert!(columns_sql.contains("s.name = 'd''bo'"));
+        assert!(columns_sql.contains("s.name = N'd''bo'"));
         assert!(columns_sql.contains("o.name = 't''able'"));
         assert!(columns_sql.contains("sys.identity_columns"));
         assert!(indexes_sql.contains("OBJECT_ID('d''bo.t''able')"));
+    }
+
+    #[test]
+    fn sqlserver_metadata_resolves_blank_schema_to_default_with_dbo_fallback() {
+        let predicate = sqlserver_schema_name_predicate("  ", "s.name");
+
+        assert_eq!(
+            predicate,
+            "s.name = COALESCE((SELECT default_schema.name FROM sys.schemas default_schema WHERE default_schema.name = SCHEMA_NAME()), N'dbo')"
+        );
+        assert!(sqlserver_list_tables_sql("", None, None, None).contains(&predicate));
+        assert!(sqlserver_columns_sql("\t", "orders").contains(&predicate));
+    }
+
+    #[test]
+    fn sqlserver_metadata_preserves_explicit_schema_matching() {
+        let predicate = sqlserver_schema_name_predicate("Sales'Ops", "s.name");
+
+        assert_eq!(predicate, "s.name = N'Sales''Ops'");
+        assert!(sqlserver_list_tables_sql("Sales'Ops", None, None, None).contains(&predicate));
+        assert!(sqlserver_columns_sql("Sales'Ops", "orders").contains(&predicate));
+        assert!(!predicate.contains("SCHEMA_NAME()"));
     }
 
     #[test]
