@@ -1,0 +1,275 @@
+import assert from "node:assert/strict";
+import { test } from "vitest";
+import type { SqlFileProgress, SqlFileStatus } from "@/lib/backend/api";
+import { useSqlFileBatchExecution, type SqlFileBatchRuntime } from "@/composables/useSqlFileBatchExecution";
+
+const request = {
+  connectionIds: ["a", "b"],
+  database: "app",
+  fileName: "seed.sql",
+  filePath: "/tmp/seed.sql",
+  continueOnError: true,
+};
+
+class Deferred<T> {
+  resolve!: (value: T) => void;
+  reject!: (reason?: unknown) => void;
+  promise: Promise<T>;
+
+  constructor() {
+    this.promise = new Promise<T>((resolve, reject) => {
+      this.resolve = resolve;
+      this.reject = reject;
+    });
+  }
+}
+
+class FakeRuntime implements SqlFileBatchRuntime {
+  actions: string[] = [];
+  taskIds: string[] = [];
+  cancelledIds: string[] = [];
+  refreshedIds: string[] = [];
+  prepare = new Map<string, () => Promise<"ready" | "declined">>();
+  executeFor = new Map<string, (request: Parameters<SqlFileBatchRuntime["execute"]>[0]) => Promise<void>>();
+  unlistenCount = 0;
+  cancelResult: Promise<boolean> = Promise.resolve(true);
+  private handlers = new Map<string, (progress: SqlFileProgress) => void>();
+  private ids = 0;
+
+  createExecutionId(connectionId: string) {
+    this.ids += 1;
+    return `${connectionId}-${this.ids}`;
+  }
+
+  prepareTarget(connectionId: string) {
+    this.actions.push(`prepare ${connectionId}`);
+    return this.prepare.get(connectionId)?.() ?? Promise.resolve("ready");
+  }
+
+  addTask(executionId: string) {
+    this.taskIds.push(executionId);
+  }
+
+  updateTask(executionId: string, progress: SqlFileProgress) {
+    this.actions.push(`update ${executionId} ${progress.status}`);
+  }
+
+  async listen(executionId: string, handler: (progress: SqlFileProgress) => void) {
+    this.actions.push(`listen ${executionId}`);
+    this.handlers.set(executionId, handler);
+    return () => {
+      this.unlistenCount += 1;
+      this.handlers.delete(executionId);
+    };
+  }
+
+  async execute(next: Parameters<SqlFileBatchRuntime["execute"]>[0]) {
+    this.actions.push(`execute ${next.connectionId}`);
+    await (this.executeFor.get(next.connectionId) ?? (async () => this.emit(next.executionId, "done")))(next);
+  }
+
+  async cancel(executionId: string) {
+    this.cancelledIds.push(executionId);
+    return this.cancelResult;
+  }
+
+  async refresh(connectionId: string) {
+    this.refreshedIds.push(connectionId);
+  }
+
+  emit(executionId: string, status: SqlFileStatus, overrides: Partial<SqlFileProgress> = {}) {
+    const progress: SqlFileProgress = {
+      executionId,
+      status,
+      statementIndex: 1,
+      successCount: 0,
+      failureCount: 0,
+      affectedRows: 0,
+      elapsedMs: 1,
+      statementSummary: "SELECT 1",
+      error: null,
+      ...overrides,
+    };
+    this.actions.push(`terminal ${progress.executionId}`);
+    this.handlers.get(executionId)?.(progress);
+  }
+}
+
+function indexOf(actions: string[], action: string) {
+  const index = actions.indexOf(action);
+  assert.notEqual(index, -1, `missing action: ${action}`);
+  return index;
+}
+
+async function waitForAction(actions: string[], action: string) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (actions.includes(action)) return;
+    await Promise.resolve();
+  }
+  assert.fail(`missing action: ${action}`);
+}
+
+test("runs targets serially after each terminal progress event", async () => {
+  const runtime = new FakeRuntime();
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start(request);
+
+  assert.ok(indexOf(runtime.actions, "prepare a") < indexOf(runtime.actions, "execute a"));
+  assert.ok(indexOf(runtime.actions, "execute a") < indexOf(runtime.actions, "terminal a-1"));
+  assert.ok(indexOf(runtime.actions, "terminal a-1") < indexOf(runtime.actions, "prepare b"));
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.status),
+    ["success", "success"],
+  );
+});
+
+test("continues after a target setup failure", async () => {
+  const runtime = new FakeRuntime();
+  runtime.prepare.set("a", async () => {
+    throw new Error("connection unavailable");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start(request);
+
+  assert.deepEqual(
+    batch.targets.value.map((target) => [target.status, target.error]),
+    [
+      ["failed", "connection unavailable"],
+      ["success", ""],
+    ],
+  );
+  assert.equal(runtime.actions.includes("execute a"), false);
+  assert.equal(runtime.actions.includes("execute b"), true);
+});
+
+test("continues after a terminal execution error", async () => {
+  const runtime = new FakeRuntime();
+  runtime.executeFor.set("a", async (next) => runtime.emit(next.executionId, "error", { error: "permission denied" }));
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start(request);
+
+  assert.deepEqual(
+    batch.targets.value.map((target) => [target.status, target.error]),
+    [
+      ["failed", "permission denied"],
+      ["success", ""],
+    ],
+  );
+});
+
+test("classifies a completed target with statement failures as partial and refreshes it", async () => {
+  const runtime = new FakeRuntime();
+  runtime.executeFor.set("a", async (next) => {
+    runtime.emit(next.executionId, "statementFailed", { failureCount: 1, error: "duplicate row" });
+    runtime.emit(next.executionId, "done", { successCount: 1, failureCount: 1 });
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start({ ...request, connectionIds: ["a"] });
+
+  assert.equal(batch.targets.value[0]?.status, "partial");
+  assert.deepEqual(runtime.refreshedIds, ["a"]);
+});
+
+test("creates distinct execution IDs and registers each executable target", async () => {
+  const runtime = new FakeRuntime();
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start(request);
+
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.executionId),
+    ["a-1", "b-2"],
+  );
+  assert.deepEqual(runtime.taskIds, ["a-1", "b-2"]);
+});
+
+test("records declined production confirmation and continues to the next target", async () => {
+  const runtime = new FakeRuntime();
+  runtime.prepare.set("a", async () => "declined");
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start(request);
+
+  assert.equal(batch.targets.value[0]?.status, "failed");
+  assert.equal(batch.targets.value[0]?.error, "Production confirmation declined");
+  assert.equal(runtime.actions.includes("execute a"), false);
+  assert.equal(batch.targets.value[1]?.status, "success");
+});
+
+test("fails an execution that throws before terminal progress and cleans up its listener", async () => {
+  const runtime = new FakeRuntime();
+  runtime.executeFor.set("a", async () => {
+    throw new Error("backend disconnected");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start({ ...request, connectionIds: ["a"] });
+
+  assert.equal(batch.targets.value[0]?.status, "failed");
+  assert.equal(batch.targets.value[0]?.error, "backend disconnected");
+  assert.equal(runtime.unlistenCount, 1);
+});
+
+test("cancels the active target and skips pending targets", async () => {
+  const runtime = new FakeRuntime();
+  const execution = new Deferred<void>();
+  runtime.executeFor.set("a", async (next) => {
+    await execution.promise;
+    runtime.emit(next.executionId, "cancelled");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  const started = batch.start(request);
+  await waitForAction(runtime.actions, "execute a");
+  await batch.stop();
+  execution.resolve();
+  await started;
+
+  assert.deepEqual(runtime.cancelledIds, ["a-1"]);
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.status),
+    ["cancelled", "skipped"],
+  );
+});
+
+test("skips a target stopped while preparation is pending without cancelling it", async () => {
+  const runtime = new FakeRuntime();
+  const preparation = new Deferred<"ready" | "declined">();
+  runtime.prepare.set("a", () => preparation.promise);
+  const batch = useSqlFileBatchExecution(runtime);
+
+  const started = batch.start(request);
+  await Promise.resolve();
+  await batch.stop();
+  preparation.resolve("ready");
+  await started;
+
+  assert.deepEqual(runtime.cancelledIds, []);
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.status),
+    ["skipped", "skipped"],
+  );
+});
+
+test("does not reset state while a batch is running", async () => {
+  const runtime = new FakeRuntime();
+  const execution = new Deferred<void>();
+  runtime.executeFor.set("a", async (next) => {
+    await execution.promise;
+    runtime.emit(next.executionId, "done");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  const started = batch.start({ ...request, connectionIds: ["a"] });
+  await Promise.resolve();
+  batch.reset();
+
+  assert.equal(batch.running.value, true);
+  assert.equal(batch.targets.value.length, 1);
+  execution.resolve();
+  await started;
+});
