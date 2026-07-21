@@ -312,6 +312,38 @@ test("unmounting the Web dialog disconnects its EventSource subscription", async
   expect(runtime.closes).toBe(1);
 });
 
+test("unmounting while Web batch load is pending prevents a late subscription", async () => {
+  const runtime = new DeferredWebBatchRuntime();
+  const load = new Deferred<WebSqlFileBatchSnapshot[]>();
+  runtime.listQueue.push(load.promise);
+  const { app } = await mountWebDialog(runtime);
+
+  app.unmount();
+  mountedApps.splice(mountedApps.indexOf(app), 1);
+  load.resolve([webSnapshot("late-after-unmount")]);
+  await flushBehavior(3);
+
+  expect(runtime.activeSubscriptions.size).toBe(0);
+});
+
+test("unmounting while Web batch start is pending prevents a late subscription", async () => {
+  const runtime = new DeferredWebBatchRuntime();
+  const created = new Deferred<WebSqlFileBatchSnapshot>();
+  runtime.createQueue.push(created.promise);
+  behaviorMocks.productionActive = false;
+  const { app } = await mountWebDialog(runtime, true);
+
+  buttonWithText("sqlFile.execute")?.click();
+  await flushBehavior();
+  expect(runtime.createdRequests).toHaveLength(1);
+  app.unmount();
+  mountedApps.splice(mountedApps.indexOf(app), 1);
+  created.resolve(webSnapshot("late-start-after-unmount"));
+  await flushBehavior(3);
+
+  expect(runtime.activeSubscriptions.size).toBe(0);
+});
+
 test("closing while Web batch start is pending disconnects the late subscription", async () => {
   const runtime = new DeferredWebBatchRuntime();
   const created = new Deferred<WebSqlFileBatchSnapshot>();

@@ -121,6 +121,7 @@ const webBatch = useWebSqlFileBatchExecution(
     listen: listenSqlFileBatch,
   },
 );
+let disposed = false;
 
 function emptySummary() {
   return { success: 0, partial: 0, failed: 0, cancelled: 0, skipped: 0 };
@@ -371,6 +372,7 @@ async function startWebBatchExecution() {
     for (const targetConnectionId of connectionIds) {
       if ((await prepareBatchTarget(targetConnectionId, targetDatabase, previewSql)) === "declined") return;
     }
+    if (disposed) return;
 
     expandedTargetIds.value = [];
     await webBatch.start({
@@ -379,7 +381,7 @@ async function startWebBatchExecution() {
       filePath,
       continueOnError: capturedContinueOnError,
     });
-    if (!open.value) webBatch.disconnect();
+    if (disposed || !open.value) webBatch.disconnect();
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
   } finally {
@@ -414,6 +416,7 @@ function handleOpenChange(nextOpen: boolean) {
 }
 
 onBeforeUnmount(() => {
+  disposed = true;
   if (!isDesktop) webBatch.disconnect();
 });
 
@@ -423,7 +426,7 @@ async function loadWebBatchesForDialog() {
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
   } finally {
-    if (!open.value) webBatch.disconnect();
+    if (disposed || !open.value) webBatch.disconnect();
   }
 }
 

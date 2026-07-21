@@ -182,6 +182,24 @@ test("a cancel GET cannot overwrite an SSE update that arrived after the GET sta
   assert.equal(batch.currentBatch.value?.updatedAtMs, 30);
 });
 
+test("a cancel GET cannot overwrite a newer snapshot written by a concurrent load", async () => {
+  const runtime = new FakeRuntime();
+  const staleGet = new Deferred<WebSqlFileBatchSnapshot>();
+  runtime.listQueue.push(Promise.resolve([snapshot("running", "running", 10)]), Promise.resolve([snapshot("running", "cancelled", 30)]));
+  runtime.getQueue.push(staleGet.promise);
+  const batch = useWebSqlFileBatchExecution(runtime);
+  await batch.load();
+
+  const cancelling = batch.cancel();
+  await Promise.resolve();
+  await batch.load();
+  staleGet.resolve(snapshot("running", "cancelling", 20));
+  await cancelling;
+
+  assert.equal(batch.currentBatch.value?.status, "cancelled");
+  assert.equal(batch.currentBatch.value?.updatedAtMs, 30);
+});
+
 test("a load that started before start cannot replace the created batch", async () => {
   const runtime = new FakeRuntime();
   const staleLoad = new Deferred<WebSqlFileBatchSnapshot[]>();
