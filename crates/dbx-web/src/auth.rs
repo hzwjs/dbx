@@ -214,6 +214,19 @@ fn extract_session_token<B>(req: &Request<B>) -> Option<String> {
     None
 }
 
+pub(crate) async fn request_is_authorized(state: &WebState, session_token: Option<&str>) -> bool {
+    if state.password_disabled {
+        return true;
+    }
+    if state.password_hash.read().await.is_none() {
+        return false;
+    }
+    let Some(token) = session_token else {
+        return false;
+    };
+    state.sessions.read().await.contains(token)
+}
+
 pub async fn auth_middleware(
     State(state): State<Arc<WebState>>,
     req: Request<axum::body::Body>,
@@ -230,19 +243,9 @@ pub async fn auth_middleware(
         return next.run(req).await;
     }
 
-    if state.password_disabled {
+    let session_token = extract_session_token(&req);
+    if request_is_authorized(&state, session_token.as_deref()).await {
         return next.run(req).await;
-    }
-
-    if state.password_hash.read().await.is_none() {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-
-    // Check session token
-    if let Some(token) = extract_session_token(&req) {
-        if state.sessions.read().await.contains(&token) {
-            return next.run(req).await;
-        }
     }
 
     StatusCode::UNAUTHORIZED.into_response()

@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
+use crate::sql_file_batch::SqlFileBatchRegistry;
+
 pub struct LoginRateLimit {
     pub fail_count: u32,
     pub locked_until: Option<std::time::Instant>,
@@ -19,6 +21,7 @@ pub struct WebState {
     pub sessions: RwLock<HashSet<String>>,
     pub sse_channels: RwLock<HashMap<String, broadcast::Sender<String>>>,
     pub sql_file_executions: RwLock<HashMap<String, CancellationToken>>,
+    pub sql_file_batches: Arc<SqlFileBatchRegistry>,
     pub login_rate_limit: Mutex<LoginRateLimit>,
     /// Table export temp files: export_id -> (file_path, format)
     pub export_files: RwLock<HashMap<String, (String, String)>>,

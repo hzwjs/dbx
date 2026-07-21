@@ -74,7 +74,7 @@ pub async fn execute_sql_file(
     }
 
     let execution_id = req.execution_id.clone();
-    let file_path = validated_uploaded_sql_path(&state.data_dir, &req.file_path)?;
+    validated_uploaded_sql_path(&state.data_dir, &req.file_path)?;
     let token = CancellationToken::new();
 
     {
@@ -87,50 +87,10 @@ pub async fn execute_sql_file(
     let (tx, _) = tokio::sync::broadcast::channel::<String>(256);
     state.sse_channels.write().await.insert(execution_id.clone(), tx.clone());
 
-    let app = state.app.clone();
     let state_clone = state.clone();
 
     tokio::spawn(async move {
-        let started_at = std::time::Instant::now();
-        match std::fs::metadata(&file_path) {
-            Ok(meta) if meta.len() > 200 * 1024 * 1024 => {
-                send_sql_file_progress(
-                    &tx,
-                    sql_file_error_progress(
-                        &req.execution_id,
-                        started_at,
-                        format!("File too large: {} bytes (max {} bytes)", meta.len(), 200 * 1024 * 1024),
-                    ),
-                );
-                cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
-                return;
-            }
-            Err(e) => {
-                send_sql_file_progress(&tx, sql_file_error_progress(&req.execution_id, started_at, e.to_string()));
-                cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
-                return;
-            }
-            _ => {}
-        }
-
-        let file_content = match std::fs::read(&file_path).and_then(|bytes| {
-            sql::decode_sql_file_bytes(&bytes)
-                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))
-        }) {
-            Ok(content) => content,
-            Err(e) => {
-                send_sql_file_progress(&tx, sql_file_error_progress(&req.execution_id, started_at, e.to_string()));
-                cleanup_sql_file_execution(&state_clone, &req.execution_id).await;
-                return;
-            }
-        };
-
-        send_sql_file_progress(
-            &tx,
-            build_sql_file_progress(&req.execution_id, SqlFileStatus::Started, 0, 0, 0, 0, started_at, "", None),
-        );
-
-        let _ = execute_sql_file_content(&app, &req, &file_content, token, started_at, |progress| {
+        run_validated_sql_file_request(&state_clone.app, &state_clone.data_dir, &req, token, |progress| {
             send_sql_file_progress(&tx, progress);
         })
         .await;
@@ -139,6 +99,56 @@ pub async fn execute_sql_file(
     });
 
     Ok(Json(serde_json::json!({ "executionId": execution_id })))
+}
+
+pub(crate) async fn run_validated_sql_file_request(
+    app: &Arc<dbx_core::connection::AppState>,
+    data_dir: &Path,
+    request: &SqlFileRequest,
+    token: CancellationToken,
+    progress: impl Fn(SqlFileProgress) + Send + Sync,
+) {
+    let started_at = std::time::Instant::now();
+    let file_path = match validated_uploaded_sql_path(data_dir, &request.file_path) {
+        Ok(path) => path,
+        Err(error) => {
+            progress(sql_file_error_progress(&request.execution_id, started_at, error.0));
+            return;
+        }
+    };
+
+    match std::fs::metadata(&file_path) {
+        Ok(meta) if meta.len() > 200 * 1024 * 1024 => {
+            progress(sql_file_error_progress(
+                &request.execution_id,
+                started_at,
+                format!("File too large: {} bytes (max {} bytes)", meta.len(), 200 * 1024 * 1024),
+            ));
+            return;
+        }
+        Err(error) => {
+            progress(sql_file_error_progress(&request.execution_id, started_at, error.to_string()));
+            return;
+        }
+        _ => {}
+    }
+
+    let file_content = match std::fs::read(&file_path).and_then(|bytes| {
+        sql::decode_sql_file_bytes(&bytes)
+            .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))
+    }) {
+        Ok(content) => content,
+        Err(error) => {
+            progress(sql_file_error_progress(&request.execution_id, started_at, error.to_string()));
+            return;
+        }
+    };
+
+    progress(build_sql_file_progress(&request.execution_id, SqlFileStatus::Started, 0, 0, 0, 0, started_at, "", None));
+
+    if let Err(error) = execute_sql_file_content(app, request, &file_content, token, started_at, &progress).await {
+        progress(sql_file_error_progress(&request.execution_id, started_at, error));
+    }
 }
 
 fn send_sql_file_progress(tx: &broadcast::Sender<String>, progress: SqlFileProgress) {
@@ -160,7 +170,7 @@ fn safe_uploaded_sql_path(tmp_dir: &Path, file_name: &str) -> Result<PathBuf, Ap
     Ok(tmp_dir.join(base_name))
 }
 
-fn validated_uploaded_sql_path(data_dir: &Path, file_path: &str) -> Result<PathBuf, AppError> {
+pub(crate) fn validated_uploaded_sql_path(data_dir: &Path, file_path: &str) -> Result<PathBuf, AppError> {
     let path = PathBuf::from(file_path);
     if !path.is_absolute() {
         return Err(AppError("File path must be absolute".to_string()));
@@ -200,7 +210,15 @@ pub async fn cancel_sql_file(
 
 #[cfg(test)]
 mod tests {
-    use super::{safe_uploaded_sql_path, validated_uploaded_sql_path};
+    use std::sync::{Arc, Mutex};
+
+    use dbx_core::connection::AppState;
+    use dbx_core::models::connection::{ConnectionConfig, DatabaseType};
+    use dbx_core::sql::{SqlFileRequest, SqlFileStatus};
+    use dbx_core::storage::Storage;
+    use tokio_util::sync::CancellationToken;
+
+    use super::{run_validated_sql_file_request, safe_uploaded_sql_path, validated_uploaded_sql_path};
 
     #[test]
     fn uploaded_sql_path_uses_only_the_file_name() {
@@ -228,5 +246,93 @@ mod tests {
 
         assert!(result.is_err());
         let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn shared_executor_emits_started_then_terminal_status_for_sqlite_target() {
+        let data_dir = std::env::temp_dir().join(format!("dbx-web-sql-file-test-{}", uuid::Uuid::new_v4()));
+        let tmp_dir = data_dir.join("tmp");
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let storage = Storage::open(&data_dir.join("storage.db")).await.unwrap();
+        let app = Arc::new(AppState::new_with_plugin_dir(storage, data_dir.join("plugins")));
+        let connection_id = "saved-sqlite".to_string();
+        let config = sqlite_config(&connection_id, &data_dir.join("target.db").to_string_lossy());
+        app.storage.save_connections(std::slice::from_ref(&config)).await.unwrap();
+        app.configs.write().await.insert(connection_id.clone(), config);
+        let file_path = tmp_dir.join("import.sql");
+        std::fs::write(&file_path, "select 1;").unwrap();
+        let request = SqlFileRequest {
+            execution_id: "single-target".to_string(),
+            connection_id,
+            database: String::new(),
+            file_path: file_path.to_string_lossy().into_owned(),
+            continue_on_error: false,
+        };
+        let statuses = Arc::new(Mutex::new(Vec::new()));
+        let observed = statuses.clone();
+
+        run_validated_sql_file_request(&app, &data_dir, &request, CancellationToken::new(), move |progress| {
+            observed.lock().unwrap().push(progress.status);
+        })
+        .await;
+
+        let statuses = statuses.lock().unwrap();
+        assert_eq!(statuses.first(), Some(&SqlFileStatus::Started));
+        assert!(matches!(statuses.last(), Some(SqlFileStatus::Done | SqlFileStatus::Error | SqlFileStatus::Cancelled)));
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    fn sqlite_config(id: &str, path: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            id: id.to_string(),
+            name: "SQLite".to_string(),
+            db_type: DatabaseType::Sqlite,
+            driver_profile: None,
+            driver_label: None,
+            url_params: None,
+            agent_java_options: Vec::new(),
+            host: path.to_string(),
+            port: 0,
+            username: String::new(),
+            password: String::new(),
+            database: None,
+            visible_databases: None,
+            visible_schemas: None,
+            attached_databases: Vec::new(),
+            init_script: None,
+            color: None,
+            transport_layers: Vec::new(),
+            connect_timeout_secs: dbx_core::models::connection::default_connect_timeout_secs(),
+            query_timeout_secs: dbx_core::models::connection::default_query_timeout_secs(),
+            idle_timeout_secs: dbx_core::models::connection::default_idle_timeout_secs(),
+            keepalive_interval_secs: dbx_core::models::connection::default_keepalive_interval_secs(),
+            ssl: false,
+            ca_cert_path: String::new(),
+            client_cert_path: String::new(),
+            client_key_path: String::new(),
+            sysdba: false,
+            oracle_connection_type: None,
+            connection_string: None,
+            redis_connection_mode: None,
+            redis_sentinel_master: String::new(),
+            redis_sentinel_nodes: String::new(),
+            redis_sentinel_username: String::new(),
+            redis_sentinel_password: String::new(),
+            redis_sentinel_tls: false,
+            redis_cluster_nodes: String::new(),
+            redis_key_separator: dbx_core::models::connection::default_redis_key_separator(),
+            redis_scan_page_size: None,
+            etcd_endpoints: String::new(),
+            gbase_server: String::new(),
+            informix_server: String::new(),
+            external_config: None,
+            jdbc_driver_class: None,
+            jdbc_driver_paths: Vec::new(),
+            one_time: false,
+            read_only: false,
+            is_production: false,
+            production_databases: vec![],
+            database_info: None,
+        }
     }
 }

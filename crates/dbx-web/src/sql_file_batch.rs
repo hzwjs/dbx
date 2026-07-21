@@ -236,11 +236,12 @@ impl SqlFileBatchRegistry {
         #[cfg(test)]
         entry.notify_before_cancel_lock();
         let mut snapshot = entry.snapshot.lock().await;
+        if snapshot.status != SqlFileBatchStatus::Running {
+            return false;
+        }
         entry.token.cancel();
         let mut updated = snapshot.clone();
-        if updated.status == SqlFileBatchStatus::Running {
-            updated.status = SqlFileBatchStatus::Cancelling;
-        }
+        updated.status = SqlFileBatchStatus::Cancelling;
         updated.updated_at_ms = now_ms();
         update_summary(&mut updated);
         *snapshot = updated.clone();
@@ -501,6 +502,21 @@ mod tests {
             vec![SqlFileBatchTargetStatus::Cancelled, SqlFileBatchTargetStatus::Skipped]
         );
         assert_eq!(fixture.executor.connection_calls(), vec!["a"]);
+    }
+
+    #[tokio::test]
+    async fn cancel_rejects_terminal_and_repeated_cancellation() {
+        let registry = Arc::new(SqlFileBatchRegistry::default());
+        let snapshot = registry.create(batch_request(&["a"])).await.unwrap();
+
+        assert!(registry.cancel(&snapshot.batch_id).await);
+        assert!(!registry.cancel(&snapshot.batch_id).await);
+
+        let completed = registry.create(batch_request(&["b"])).await.unwrap();
+        let executor = Arc::new(FakeExecutor::new(false));
+        run_sql_file_batch(registry.clone(), completed.batch_id.clone(), executor).await;
+        assert_eq!(registry.get(&completed.batch_id).await.unwrap().status, SqlFileBatchStatus::Completed);
+        assert!(!registry.cancel(&completed.batch_id).await);
     }
 
     #[tokio::test]

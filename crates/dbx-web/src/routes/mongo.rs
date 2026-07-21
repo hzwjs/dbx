@@ -768,6 +768,7 @@ async fn ensure_find_one_write_policy(
 #[cfg(test)]
 mod tests {
     use super::ensure_find_one_write_policy;
+    use crate::sql_file_batch::SqlFileBatchRegistry;
     use crate::state::{LoginRateLimit, WebState};
     use axum::http::{HeaderMap, HeaderValue};
     use dbx_core::connection::AppState;
@@ -806,6 +807,7 @@ mod tests {
             sessions: RwLock::new(HashSet::new()),
             sse_channels: RwLock::new(HashMap::new()),
             sql_file_executions: RwLock::new(HashMap::new()),
+            sql_file_batches: Arc::new(SqlFileBatchRegistry::default()),
             login_rate_limit: Mutex::new(LoginRateLimit { fail_count: 0, locked_until: None }),
             export_files: RwLock::new(HashMap::new()),
         });

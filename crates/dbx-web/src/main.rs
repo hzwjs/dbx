@@ -18,6 +18,7 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use dbx_core::connection::AppState;
 use dbx_core::storage::Storage;
+use sql_file_batch::SqlFileBatchRegistry;
 use state::WebState;
 use tokio::sync::RwLock;
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
@@ -183,6 +184,7 @@ async fn main() {
         sessions: RwLock::new(HashSet::new()),
         sse_channels: RwLock::new(HashMap::new()),
         sql_file_executions: RwLock::new(HashMap::new()),
+        sql_file_batches: Arc::new(SqlFileBatchRegistry::default()),
         login_rate_limit: tokio::sync::Mutex::new(state::LoginRateLimit { fail_count: 0, locked_until: None }),
         export_files: RwLock::new(HashMap::new()),
     });
@@ -547,6 +549,13 @@ async fn main() {
         .route("/sql-file/execute", post(routes::sql_file::execute_sql_file))
         .route("/sql-file/progress/{executionId}", get(routes::sql_file::sql_file_progress))
         .route("/sql-file/cancel", post(routes::sql_file::cancel_sql_file))
+        .route(
+            "/sql-file/batches",
+            post(routes::sql_file_batch::create_sql_file_batch).get(routes::sql_file_batch::list_sql_file_batches),
+        )
+        .route("/sql-file/batches/{batchId}", get(routes::sql_file_batch::get_sql_file_batch))
+        .route("/sql-file/batches/{batchId}/events", get(routes::sql_file_batch::sql_file_batch_events))
+        .route("/sql-file/batches/{batchId}/cancel", post(routes::sql_file_batch::cancel_sql_file_batch))
         // Table import
         .route("/import/preview", post(routes::table_import::preview_import))
         .route("/import/execute", post(routes::table_import::execute_import))

@@ -391,6 +391,7 @@ mod tests {
         test_connection_with_info, ConnectRequest, DisconnectRequest, McpAddConnectionRequest,
         McpRemoveConnectionRequest, SaveConnectionDatabaseInfoRequest, SaveConnectionsRequest,
     };
+    use crate::sql_file_batch::SqlFileBatchRegistry;
     use crate::state::{LoginRateLimit, WebState};
     use axum::extract::State;
     use axum::Json;
@@ -489,6 +490,7 @@ mod tests {
             sessions: RwLock::new(HashSet::new()),
             sse_channels: RwLock::new(HashMap::new()),
             sql_file_executions: RwLock::new(HashMap::new()),
+            sql_file_batches: Arc::new(SqlFileBatchRegistry::default()),
             login_rate_limit: Mutex::new(LoginRateLimit { fail_count: 0, locked_until: None }),
             export_files: RwLock::new(HashMap::new()),
         });
