@@ -57,23 +57,30 @@ pub enum SqlFileBatchTargetStatus {
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlFileBatchTarget {
-    pub target_id: String,
     pub connection_id: String,
+    pub execution_id: String,
     pub status: SqlFileBatchTargetStatus,
+    pub statement_index: usize,
     pub success_count: usize,
     pub failure_count: usize,
     pub affected_rows: u64,
     pub elapsed_ms: u128,
-    pub error: Option<String>,
-    pub failure_details: Vec<String>,
+    pub statement_summary: String,
+    pub error: String,
+    pub failures: Vec<SqlFileBatchFailure>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlFileBatchFailure {
+    pub statement_index: usize,
+    pub statement_summary: String,
+    pub error: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlFileBatchSummary {
-    pub total: usize,
-    pub pending: usize,
-    pub running: usize,
     pub success: usize,
     pub partial: usize,
     pub failed: usize,
@@ -162,15 +169,17 @@ impl SqlFileBatchRegistry {
             .connection_ids
             .into_iter()
             .map(|connection_id| SqlFileBatchTarget {
-                target_id: uuid::Uuid::new_v4().to_string(),
                 connection_id,
+                execution_id: uuid::Uuid::new_v4().to_string(),
                 status: SqlFileBatchTargetStatus::Pending,
+                statement_index: 0,
                 success_count: 0,
                 failure_count: 0,
                 affected_rows: 0,
                 elapsed_ms: 0,
-                error: None,
-                failure_details: Vec::new(),
+                statement_summary: String::new(),
+                error: String::new(),
+                failures: Vec::new(),
             })
             .collect();
         let mut snapshot = SqlFileBatchSnapshot {
@@ -277,9 +286,9 @@ pub async fn run_sql_file_batch(
                 None
             } else {
                 let target = &snapshot.targets[target_index];
-                let target_id = target.target_id.clone();
+                let execution_id = target.execution_id.clone();
                 let request = SqlFileRequest {
-                    execution_id: target_id.clone(),
+                    execution_id: execution_id.clone(),
                     connection_id: target.connection_id.clone(),
                     database: snapshot.database.clone(),
                     file_path: entry.file_path.clone(),
@@ -299,10 +308,10 @@ pub async fn run_sql_file_batch(
                 #[cfg(test)]
                 entry.wait_before_target_invoke(target_index).await;
                 let execution = executor.execute(request, entry.token.clone(), progress);
-                Some((target_id, execution, progress_rx))
+                Some((execution_id, execution, progress_rx))
             }
         };
-        let Some((target_id, execution, mut progress_rx)) = start else {
+        let Some((execution_id, execution, mut progress_rx)) = start else {
             finish_cancelled(&entry).await;
             return;
         };
@@ -316,7 +325,7 @@ pub async fn run_sql_file_batch(
                     if is_terminal(progress.status) {
                         terminal_progress = Some(progress.clone());
                     }
-                    apply_progress(&entry, &target_id, progress).await;
+                    apply_progress(&entry, &execution_id, progress).await;
                 }
                 _ = &mut execution => execution_finished = true,
             }
@@ -325,13 +334,13 @@ pub async fn run_sql_file_batch(
             if is_terminal(progress.status) {
                 terminal_progress = Some(progress.clone());
             }
-            apply_progress(&entry, &target_id, progress).await;
+            apply_progress(&entry, &execution_id, progress).await;
         }
         if terminal_progress.is_none() {
             update_entry(&entry, |snapshot| {
                 let target = &mut snapshot.targets[target_index];
                 target.status = SqlFileBatchTargetStatus::Failed;
-                target.error = Some("Execution completed without terminal progress".to_string());
+                target.error = "Execution completed without terminal progress".to_string();
             })
             .await;
         }
@@ -347,39 +356,41 @@ pub async fn run_sql_file_batch(
     .await;
 }
 
-async fn apply_progress(entry: &SqlFileBatchEntry, target_id: &str, progress: SqlFileProgress) {
+async fn apply_progress(entry: &SqlFileBatchEntry, execution_id: &str, progress: SqlFileProgress) {
     update_entry(entry, |snapshot| {
-        let Some(target) = snapshot.targets.iter_mut().find(|target| target.target_id == target_id) else {
+        let Some(target) = snapshot.targets.iter_mut().find(|target| target.execution_id == execution_id) else {
             return;
         };
+        let error = progress.error.unwrap_or_default();
+        if progress.status == SqlFileStatus::StatementFailed && !error.is_empty() {
+            target.failures.push(SqlFileBatchFailure {
+                statement_index: progress.statement_index,
+                statement_summary: progress.statement_summary.clone(),
+                error: error.clone(),
+            });
+        }
+        target.statement_index = progress.statement_index;
         target.success_count = progress.success_count;
-        target.failure_count = progress.failure_count;
+        target.failure_count = progress.failure_count.max(target.failures.len());
         target.affected_rows = progress.affected_rows;
         target.elapsed_ms = progress.elapsed_ms;
-        match progress.status {
+        target.statement_summary = progress.statement_summary;
+        target.error = error;
+        target.status = match progress.status {
             SqlFileStatus::Done => {
-                target.status = if progress.failure_count == 0 {
+                if target.failure_count == 0 {
                     SqlFileBatchTargetStatus::Success
                 } else {
                     SqlFileBatchTargetStatus::Partial
-                };
-                target.error = progress.error;
-            }
-            SqlFileStatus::Error => {
-                target.status = SqlFileBatchTargetStatus::Failed;
-                target.error = progress.error;
-            }
-            SqlFileStatus::Cancelled => {
-                target.status = SqlFileBatchTargetStatus::Cancelled;
-                target.error = progress.error;
-            }
-            SqlFileStatus::StatementFailed => {
-                if let Some(error) = progress.error.filter(|error| !error.is_empty()) {
-                    target.failure_details.push(error);
                 }
             }
-            SqlFileStatus::Started | SqlFileStatus::Running | SqlFileStatus::StatementDone => {}
-        }
+            SqlFileStatus::Error => SqlFileBatchTargetStatus::Failed,
+            SqlFileStatus::Cancelled => SqlFileBatchTargetStatus::Cancelled,
+            SqlFileStatus::Started
+            | SqlFileStatus::Running
+            | SqlFileStatus::StatementDone
+            | SqlFileStatus::StatementFailed => SqlFileBatchTargetStatus::Running,
+        };
     })
     .await;
 }
@@ -433,11 +444,10 @@ impl TestGate {
 }
 
 fn update_summary(snapshot: &mut SqlFileBatchSnapshot) {
-    let mut summary = SqlFileBatchSummary { total: snapshot.targets.len(), ..SqlFileBatchSummary::default() };
+    let mut summary = SqlFileBatchSummary::default();
     for target in &snapshot.targets {
         match target.status {
-            SqlFileBatchTargetStatus::Pending => summary.pending += 1,
-            SqlFileBatchTargetStatus::Running => summary.running += 1,
+            SqlFileBatchTargetStatus::Pending | SqlFileBatchTargetStatus::Running => {}
             SqlFileBatchTargetStatus::Success => summary.success += 1,
             SqlFileBatchTargetStatus::Partial => summary.partial += 1,
             SqlFileBatchTargetStatus::Failed => summary.failed += 1,
@@ -458,13 +468,104 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeSet, HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
     use dbx_core::sql::{SqlFileProgress, SqlFileRequest, SqlFileStatus};
     use tokio::sync::{broadcast, Notify};
 
     use super::*;
+
+    #[tokio::test]
+    async fn serialized_target_and_summary_match_the_approved_contract() {
+        let registry = SqlFileBatchRegistry::default();
+        let snapshot = registry.create(batch_request(&["saved-a"])).await.unwrap();
+        let target = serde_json::to_value(&snapshot.targets[0]).unwrap();
+        let summary = serde_json::to_value(&snapshot.summary).unwrap();
+
+        let target_keys: BTreeSet<_> = target.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(
+            target_keys,
+            BTreeSet::from([
+                "affectedRows",
+                "connectionId",
+                "elapsedMs",
+                "error",
+                "executionId",
+                "failureCount",
+                "failures",
+                "statementIndex",
+                "statementSummary",
+                "status",
+                "successCount",
+            ])
+        );
+        assert!(target["error"].is_string());
+        assert_eq!(
+            summary.as_object().unwrap().keys().map(String::as_str).collect::<BTreeSet<_>>(),
+            BTreeSet::from(["cancelled", "failed", "partial", "skipped", "success"])
+        );
+    }
+
+    #[tokio::test]
+    async fn statement_failure_then_done_reduces_to_structured_partial_target() {
+        let registry = SqlFileBatchRegistry::default();
+        let snapshot = registry.create(batch_request(&["saved-a"])).await.unwrap();
+        let execution_id =
+            serde_json::to_value(&snapshot.targets[0]).unwrap()["executionId"].as_str().unwrap().to_string();
+        let entry = registry.entry(&snapshot.batch_id).await.unwrap();
+
+        apply_progress(
+            &entry,
+            &execution_id,
+            SqlFileProgress {
+                execution_id: execution_id.clone(),
+                status: SqlFileStatus::StatementFailed,
+                statement_index: 3,
+                success_count: 1,
+                failure_count: 0,
+                affected_rows: 4,
+                elapsed_ms: 5,
+                statement_summary: "insert failed".to_string(),
+                error: Some("syntax error".to_string()),
+            },
+        )
+        .await;
+        apply_progress(
+            &entry,
+            &execution_id,
+            SqlFileProgress {
+                execution_id: execution_id.clone(),
+                status: SqlFileStatus::Done,
+                statement_index: 4,
+                success_count: 2,
+                failure_count: 0,
+                affected_rows: 7,
+                elapsed_ms: 9,
+                statement_summary: "finished".to_string(),
+                error: None,
+            },
+        )
+        .await;
+
+        let target = serde_json::to_value(&registry.get(&snapshot.batch_id).await.unwrap().targets[0]).unwrap();
+        assert_eq!(target["status"], "partial");
+        assert_eq!(target["statementIndex"], 4);
+        assert_eq!(target["successCount"], 2);
+        assert_eq!(target["failureCount"], 1);
+        assert_eq!(target["affectedRows"], 7);
+        assert_eq!(target["elapsedMs"], 9);
+        assert_eq!(target["statementSummary"], "finished");
+        assert_eq!(target["error"], "");
+        assert_eq!(
+            target["failures"],
+            serde_json::json!([{
+                "statementIndex": 3,
+                "statementSummary": "insert failed",
+                "error": "syntax error"
+            }])
+        );
+    }
 
     #[tokio::test]
     async fn targets_execute_strictly_in_submission_order() {
