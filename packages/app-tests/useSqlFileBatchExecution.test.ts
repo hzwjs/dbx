@@ -236,6 +236,56 @@ test("cancels the active target and skips pending targets", async () => {
   );
 });
 
+test("keeps the queue stopped when cancellation is declined", async () => {
+  const runtime = new FakeRuntime();
+  const execution = new Deferred<void>();
+  runtime.executeFor.set("a", async (next) => {
+    await execution.promise;
+    runtime.emit(next.executionId, "done");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  const started = batch.start(request);
+  await waitForAction(runtime.actions, "execute a");
+  runtime.cancelResult = Promise.resolve(false);
+  await batch.stop();
+  execution.resolve();
+  await started;
+
+  assert.deepEqual(runtime.cancelledIds, ["a-1"]);
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.status),
+    ["success", "skipped"],
+  );
+  assert.equal(runtime.actions.includes("prepare b"), false);
+  assert.equal(runtime.actions.includes("execute b"), false);
+});
+
+test("keeps the queue stopped when cancellation rejects", async () => {
+  const runtime = new FakeRuntime();
+  const execution = new Deferred<void>();
+  runtime.executeFor.set("a", async (next) => {
+    await execution.promise;
+    runtime.emit(next.executionId, "done");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  const started = batch.start(request);
+  await waitForAction(runtime.actions, "execute a");
+  runtime.cancelResult = Promise.reject(new Error("cancel unavailable"));
+  await batch.stop();
+  execution.resolve();
+  await started;
+
+  assert.deepEqual(runtime.cancelledIds, ["a-1"]);
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.status),
+    ["success", "skipped"],
+  );
+  assert.equal(runtime.actions.includes("prepare b"), false);
+  assert.equal(runtime.actions.includes("execute b"), false);
+});
+
 test("skips a target stopped while preparation is pending without cancelling it", async () => {
   const runtime = new FakeRuntime();
   const preparation = new Deferred<"ready" | "declined">();
