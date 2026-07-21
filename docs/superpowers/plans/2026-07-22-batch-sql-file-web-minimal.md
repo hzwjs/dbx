@@ -430,6 +430,7 @@ export interface CreateWebSqlFileBatchRequest {
 
 export interface WebSqlFileBatchSnapshot {
   batchId: string;
+  revision: number;
   fileName: string;
   database: string;
   continueOnError: boolean;
