@@ -105,15 +105,16 @@ struct SqlFileBatchEntry {
 #[cfg(test)]
 #[derive(Default)]
 struct SqlFileBatchTestHooks {
-    before_target_start: std::sync::Mutex<HashMap<usize, Arc<TestGate>>>,
+    before_target_invoke: std::sync::Mutex<HashMap<usize, Arc<TestGate>>>,
     before_subscribe: std::sync::Mutex<Option<Arc<TestGate>>>,
     before_broadcast: std::sync::Mutex<Option<Arc<TestGate>>>,
+    before_cancel_lock: std::sync::Mutex<Option<Arc<tokio::sync::Notify>>>,
 }
 
 #[cfg(test)]
 impl SqlFileBatchEntry {
-    async fn wait_before_target_start(&self, target_index: usize) {
-        let gate = { self.test_hooks.before_target_start.lock().unwrap().remove(&target_index) };
+    async fn wait_before_target_invoke(&self, target_index: usize) {
+        let gate = { self.test_hooks.before_target_invoke.lock().unwrap().remove(&target_index) };
         if let Some(gate) = gate {
             gate.wait_for_release().await;
         }
@@ -130,6 +131,12 @@ impl SqlFileBatchEntry {
         let gate = { self.test_hooks.before_broadcast.lock().unwrap().take() };
         if let Some(gate) = gate {
             gate.wait_for_release().await;
+        }
+    }
+
+    fn notify_before_cancel_lock(&self) {
+        if let Some(notify) = self.test_hooks.before_cancel_lock.lock().unwrap().take() {
+            notify.notify_one();
         }
     }
 }
@@ -214,11 +221,11 @@ impl SqlFileBatchRegistry {
         let entry = self.entry(batch_id).await?;
         let (snapshot, receiver) = {
             let snapshot = entry.snapshot.lock().await;
+            #[cfg(test)]
+            entry.wait_before_subscribe().await;
             let receiver = entry.updates.subscribe();
             (snapshot.clone(), receiver)
         };
-        #[cfg(test)]
-        entry.wait_before_subscribe().await;
         Some((snapshot, receiver))
     }
 
@@ -226,6 +233,8 @@ impl SqlFileBatchRegistry {
         let Some(entry) = self.entry(batch_id).await else {
             return false;
         };
+        #[cfg(test)]
+        entry.notify_before_cancel_lock();
         let mut snapshot = entry.snapshot.lock().await;
         entry.token.cancel();
         let mut updated = snapshot.clone();
@@ -237,8 +246,6 @@ impl SqlFileBatchRegistry {
         *snapshot = updated.clone();
         let _ = entry.updates.send(updated);
         drop(snapshot);
-        #[cfg(test)]
-        entry.wait_before_broadcast().await;
         true
     }
 
@@ -258,9 +265,6 @@ pub async fn run_sql_file_batch(
     let target_count = entry.snapshot.lock().await.targets.len();
 
     for target_index in 0..target_count {
-        #[cfg(test)]
-        entry.wait_before_target_start(target_index).await;
-
         let start = {
             let mut snapshot = entry.snapshot.lock().await;
             if entry.token.is_cancelled() {
@@ -286,6 +290,8 @@ pub async fn run_sql_file_batch(
                 let progress: ProgressSink = Arc::new(move |progress| {
                     let _ = progress_tx.send(progress);
                 });
+                #[cfg(test)]
+                entry.wait_before_target_invoke(target_index).await;
                 let execution = executor.execute(request, entry.token.clone(), progress);
                 Some((target_id, execution, progress_rx))
             }
@@ -391,10 +397,10 @@ async fn update_entry(entry: &SqlFileBatchEntry, update: impl FnOnce(&mut SqlFil
     updated.updated_at_ms = now_ms();
     update_summary(&mut updated);
     *snapshot = updated.clone();
-    let _ = entry.updates.send(updated);
-    drop(snapshot);
     #[cfg(test)]
     entry.wait_before_broadcast().await;
+    let _ = entry.updates.send(updated);
+    drop(snapshot);
 }
 
 #[cfg(test)]
@@ -515,43 +521,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_accepted_at_next_target_gate_never_invokes_executor() {
+    async fn cancellation_waits_for_the_started_target_to_be_invoked() {
         let fixture = BatchFixture::new_blocked(&["a", "b"]).await;
         let entry = fixture.registry.entry(&fixture.batch_id).await.unwrap();
         let gate = Arc::new(TestGate::default());
-        entry.test_hooks.before_target_start.lock().unwrap().insert(1, gate.clone());
+        entry.test_hooks.before_target_invoke.lock().unwrap().insert(1, gate.clone());
+        let cancel_attempted = Arc::new(Notify::new());
+        *entry.test_hooks.before_cancel_lock.lock().unwrap() = Some(cancel_attempted.clone());
 
         let worker = fixture.spawn();
         fixture.executor.wait_until_started("a").await;
         fixture.executor.release_with("a", SqlFileStatus::Done);
         gate.wait_until_arrived().await;
-        assert!(fixture.registry.cancel(&fixture.batch_id).await);
+        let batch_id = fixture.batch_id.clone();
+        let registry = fixture.registry.clone();
+        let mut cancel = tokio::spawn(async move { registry.cancel(&batch_id).await });
+        cancel_attempted.notified().await;
+        assert!(!cancel.is_finished());
         gate.release();
-        fixture.executor.release_with("b", SqlFileStatus::Done);
+        fixture.executor.wait_until_started("b").await;
+        assert!(cancel.await.unwrap());
+        fixture.executor.release_with("b", SqlFileStatus::Cancelled);
         worker.await.unwrap();
 
-        assert_eq!(fixture.executor.connection_calls(), vec!["a"]);
-        assert_eq!(
-            fixture.final_statuses(),
-            vec![SqlFileBatchTargetStatus::Success, SqlFileBatchTargetStatus::Skipped]
-        );
+        assert_eq!(fixture.executor.connection_calls(), vec!["a", "b"]);
     }
 
     #[tokio::test]
-    async fn subscription_cannot_miss_an_update_in_its_creation_window() {
+    async fn subscription_creation_blocks_a_competing_cancellation_until_receiver_exists() {
         let registry = Arc::new(SqlFileBatchRegistry::default());
         let snapshot = registry.create(batch_request(&["a"])).await.unwrap();
         let entry = registry.entry(&snapshot.batch_id).await.unwrap();
         let gate = Arc::new(TestGate::default());
         *entry.test_hooks.before_subscribe.lock().unwrap() = Some(gate.clone());
+        let cancel_attempted = Arc::new(Notify::new());
+        *entry.test_hooks.before_cancel_lock.lock().unwrap() = Some(cancel_attempted.clone());
 
         let batch_id = snapshot.batch_id.clone();
         let subscriber_registry = registry.clone();
         let subscriber = tokio::spawn(async move { subscriber_registry.subscribe(&batch_id).await.unwrap() });
         gate.wait_until_arrived().await;
-        assert!(registry.cancel(&snapshot.batch_id).await);
+        let batch_id = snapshot.batch_id.clone();
+        let cancel_registry = registry.clone();
+        let mut cancel = tokio::spawn(async move { cancel_registry.cancel(&batch_id).await });
+        cancel_attempted.notified().await;
+        assert!(!cancel.is_finished());
         gate.release();
         let (initial, mut updates) = subscriber.await.unwrap();
+        assert!(cancel.await.unwrap());
 
         let update = updates.try_recv().ok();
         assert!(
@@ -561,13 +578,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn observers_do_not_receive_a_running_snapshot_after_cancelling() {
+    async fn broadcast_of_running_precedes_a_competing_cancelling_snapshot() {
         let registry = Arc::new(SqlFileBatchRegistry::default());
         let snapshot = registry.create(batch_request(&["a"])).await.unwrap();
         let entry = registry.entry(&snapshot.batch_id).await.unwrap();
         let (_, mut updates) = registry.subscribe(&snapshot.batch_id).await.unwrap();
         let gate = Arc::new(TestGate::default());
         *entry.test_hooks.before_broadcast.lock().unwrap() = Some(gate.clone());
+        let cancel_attempted = Arc::new(Notify::new());
+        *entry.test_hooks.before_cancel_lock.lock().unwrap() = Some(cancel_attempted.clone());
 
         let entry_for_update = entry.clone();
         let update = tokio::spawn(async move {
@@ -577,9 +596,14 @@ mod tests {
             .await;
         });
         gate.wait_until_arrived().await;
-        assert!(registry.cancel(&snapshot.batch_id).await);
+        let batch_id = snapshot.batch_id.clone();
+        let cancel_registry = registry.clone();
+        let mut cancel = tokio::spawn(async move { cancel_registry.cancel(&batch_id).await });
+        cancel_attempted.notified().await;
+        assert!(!cancel.is_finished());
         gate.release();
         update.await.unwrap();
+        assert!(cancel.await.unwrap());
 
         let statuses: Vec<_> = std::iter::from_fn(|| updates.try_recv().ok()).map(|snapshot| snapshot.status).collect();
         let cancelling = statuses.iter().position(|status| *status == SqlFileBatchStatus::Cancelling).unwrap();
