@@ -735,7 +735,7 @@ watch(
 
           <div class="space-y-2">
             <div v-for="target in batchTargets" :key="target.executionId" class="overflow-hidden rounded-md border">
-              <button type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted/40" @click="toggleTargetExpanded(target.executionId)">
+              <button type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted/40" :aria-expanded="isTargetExpanded(target.executionId)" :aria-controls="`sql-file-target-details-${target.executionId}`" @click="toggleTargetExpanded(target.executionId)">
                 <ChevronDown v-if="isTargetExpanded(target.executionId)" class="h-3.5 w-3.5 shrink-0" />
                 <ChevronRight v-else class="h-3.5 w-3.5 shrink-0" :class="{ 'text-muted-foreground/50': !targetHasDetails(target) }" />
                 <DatabaseIcon :db-type="connectionIconType(target.connectionId)" class="h-3.5 w-3.5 shrink-0" />
@@ -747,7 +747,7 @@ watch(
                 <span class="w-16 shrink-0 text-right text-muted-foreground">{{ formatElapsed(target.elapsedMs) }}</span>
               </button>
 
-              <div v-if="isTargetExpanded(target.executionId)" class="space-y-2 border-t bg-muted/10 px-3 py-2 text-xs">
+              <div v-if="isTargetExpanded(target.executionId)" :id="`sql-file-target-details-${target.executionId}`" class="space-y-2 border-t bg-muted/10 px-3 py-2 text-xs">
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <div>
                     <div class="text-muted-foreground">{{ t("sqlFile.succeeded") }}</div>

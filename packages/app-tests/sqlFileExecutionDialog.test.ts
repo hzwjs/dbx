@@ -44,6 +44,9 @@ test("desktop SQL file execution renders ordered multi-target controls and batch
   assert.match(dialogSource, /const batchDatabase = ref\(""\)/);
   assert.match(dialogSource, /batchDatabase\.value = database\.value\.trim\(\)/);
   assert.match(dialogSource, /@click="toggleTargetExpanded\(target\.executionId\)"/);
+  assert.match(dialogSource, /:aria-expanded="isTargetExpanded\(target\.executionId\)"/);
+  assert.match(dialogSource, /:aria-controls="`sql-file-target-details-\$\{target\.executionId\}`"/);
+  assert.match(dialogSource, /:id="`sql-file-target-details-\$\{target\.executionId\}`"/);
   assert.match(dialogSource, /target\.failures/);
   assert.match(dialogSource, /decideSqlFileBatchDialogClose/);
   assert.match(dialogSource, /decideSqlFileBatchDialogOpen/);

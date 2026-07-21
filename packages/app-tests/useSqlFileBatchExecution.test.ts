@@ -27,12 +27,14 @@ class Deferred<T> {
 class FakeRuntime implements SqlFileBatchRuntime {
   actions: string[] = [];
   taskIds: string[] = [];
+  tasks: Array<{ executionId: string; fileName: string; filePath: string; connectionId: string; database: string }> = [];
   taskUpdates: Array<{ executionId: string; progress: SqlFileProgress }> = [];
   cancelledIds: string[] = [];
   refreshedIds: string[] = [];
   prepare = new Map<string, () => Promise<"ready" | "declined">>();
   executeFor = new Map<string, (request: Parameters<SqlFileBatchRuntime["execute"]>[0]) => Promise<void>>();
   listenFor = new Map<string, () => Promise<() => void>>();
+  addTaskFor = new Map<string, () => void>();
   unlistenCount = 0;
   cancelResult: Promise<boolean> = Promise.resolve(true);
   private handlers = new Map<string, (progress: SqlFileProgress) => void>();
@@ -48,8 +50,11 @@ class FakeRuntime implements SqlFileBatchRuntime {
     return this.prepare.get(connectionId)?.() ?? Promise.resolve("ready");
   }
 
-  addTask(executionId: string) {
+  addTask(executionId: string, fileName: string, filePath: string, connectionId: string, database: string) {
     this.taskIds.push(executionId);
+    this.tasks.push({ executionId, fileName, filePath, connectionId, database });
+    this.actions.push(`add ${executionId}`);
+    this.addTaskFor.get(executionId)?.();
   }
 
   updateTask(executionId: string, progress: SqlFileProgress) {
@@ -147,6 +152,10 @@ test("continues after a target setup failure", async () => {
   );
   assert.equal(runtime.actions.includes("execute a"), false);
   assert.equal(runtime.actions.includes("execute b"), true);
+  assert.deepEqual(
+    runtime.taskUpdates.filter(({ executionId }) => executionId === "a-1").map(({ progress }) => [progress.status, progress.error]),
+    [["error", "connection unavailable"]],
+  );
 });
 
 test("continues after a terminal execution error", async () => {
@@ -179,7 +188,7 @@ test("classifies a completed target with statement failures as partial and refre
   assert.deepEqual(runtime.refreshedIds, ["a"]);
 });
 
-test("creates distinct execution IDs and registers each executable target", async () => {
+test("registers every frozen target with metadata before preparing the first target", async () => {
   const runtime = new FakeRuntime();
   const batch = useSqlFileBatchExecution(runtime);
 
@@ -190,6 +199,11 @@ test("creates distinct execution IDs and registers each executable target", asyn
     ["a-1", "b-2"],
   );
   assert.deepEqual(runtime.taskIds, ["a-1", "b-2"]);
+  assert.deepEqual(runtime.tasks, [
+    { executionId: "a-1", fileName: "seed.sql", filePath: "/tmp/seed.sql", connectionId: "a", database: "app" },
+    { executionId: "b-2", fileName: "seed.sql", filePath: "/tmp/seed.sql", connectionId: "b", database: "app" },
+  ]);
+  assert.ok(indexOf(runtime.actions, "add b-2") < indexOf(runtime.actions, "prepare a"));
 });
 
 test("records declined production confirmation and continues to the next target", async () => {
@@ -203,6 +217,35 @@ test("records declined production confirmation and continues to the next target"
   assert.equal(batch.targets.value[0]?.error, "Production confirmation declined");
   assert.equal(runtime.actions.includes("execute a"), false);
   assert.equal(batch.targets.value[1]?.status, "success");
+  assert.deepEqual(
+    runtime.taskUpdates.filter(({ executionId }) => executionId === "a-1").map(({ progress }) => [progress.status, progress.error]),
+    [["error", "Production confirmation declined"]],
+  );
+});
+
+test("terminalizes a partially-created tracker task when addTask throws and continues", async () => {
+  const runtime = new FakeRuntime();
+  runtime.addTaskFor.set("a-1", () => {
+    throw new Error("tracker registration failed");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start(request);
+
+  assert.deepEqual(runtime.taskIds, ["a-1", "b-2"]);
+  assert.deepEqual(
+    batch.targets.value.map((target) => [target.status, target.error]),
+    [
+      ["failed", "tracker registration failed"],
+      ["success", ""],
+    ],
+  );
+  assert.equal(runtime.actions.includes("prepare a"), false);
+  assert.equal(runtime.actions.includes("execute b"), true);
+  assert.deepEqual(
+    runtime.taskUpdates.filter(({ executionId }) => executionId === "a-1").map(({ progress }) => [progress.status, progress.error]),
+    [["error", "tracker registration failed"]],
+  );
 });
 
 test("fails an execution that throws before terminal progress and cleans up its listener", async () => {
@@ -332,6 +375,13 @@ test("cancels the active target and skips pending targets", async () => {
     batch.targets.value.map((target) => target.status),
     ["cancelled", "skipped"],
   );
+  assert.deepEqual(
+    runtime.taskUpdates.map(({ executionId, progress }) => [executionId, progress.status]),
+    [
+      ["a-1", "cancelled"],
+      ["b-2", "cancelled"],
+    ],
+  );
 });
 
 test("stopping while listener setup is pending terminalizes its tracker and skips every target", async () => {
@@ -356,22 +406,13 @@ test("stopping while listener setup is pending terminalizes its tracker and skip
   );
   assert.deepEqual(runtime.cancelledIds, []);
   assert.equal(runtime.unlistenCount, 1);
-  assert.deepEqual(runtime.taskUpdates, [
-    {
-      executionId: "a-1",
-      progress: {
-        executionId: "a-1",
-        status: "cancelled",
-        statementIndex: 0,
-        successCount: 0,
-        failureCount: 0,
-        affectedRows: 0,
-        elapsedMs: 0,
-        statementSummary: "",
-        error: null,
-      },
-    },
-  ]);
+  assert.deepEqual(
+    runtime.taskUpdates.map(({ executionId, progress }) => [executionId, progress.status]),
+    [
+      ["a-1", "cancelled"],
+      ["b-2", "cancelled"],
+    ],
+  );
 });
 
 test("keeps the queue stopped when cancellation is declined", async () => {
@@ -440,6 +481,13 @@ test("skips a target stopped while preparation is pending without cancelling it"
   assert.deepEqual(
     batch.targets.value.map((target) => target.status),
     ["skipped", "skipped"],
+  );
+  assert.deepEqual(
+    runtime.taskUpdates.map(({ executionId, progress }) => [executionId, progress.status]),
+    [
+      ["a-1", "cancelled"],
+      ["b-2", "cancelled"],
+    ],
   );
 });
 

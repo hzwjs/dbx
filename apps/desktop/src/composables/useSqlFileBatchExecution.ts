@@ -46,6 +46,9 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
   }
 
   function skipPendingTargets() {
+    for (const target of targets.value) {
+      if (target.status === "pending") cancelTrackedTarget(target);
+    }
     targets.value = skipPendingSqlFileBatchTargets(targets.value);
   }
 
@@ -95,11 +98,10 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
       const preparation = await runtime.prepareTarget(target.connectionId, request.database);
       if (stopRequested) return;
       if (preparation === "declined") {
-        replaceTarget(failSqlFileBatchTarget(target, "Production confirmation declined"));
+        failTrackedTarget(target, "Production confirmation declined");
         return;
       }
 
-      runtime.addTask(target.executionId, request.fileName, request.filePath, target.connectionId, request.database);
       let unlisten: (() => void) | undefined;
       try {
         unlisten = await runtime.listen(target.executionId, (progress) => {
@@ -107,11 +109,7 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
           replaceTarget(reduceSqlFileBatchProgress(activeTarget.value ?? target, progress));
           runtime.updateTask(target.executionId, progress);
         });
-        if (stopRequested) {
-          const stopped = targets.value.find((item) => item.executionId === target.executionId) ?? target;
-          if (!isTerminal(stopped)) cancelTrackedTarget(stopped);
-          return;
-        }
+        if (stopRequested) return;
 
         executionStarted = true;
         await runtime.execute({
@@ -136,7 +134,10 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
         unlisten?.();
       }
     } catch (error) {
-      if (!stopRequested) replaceTarget(failSqlFileBatchTarget(target, errorMessage(error)));
+      if (!stopRequested) {
+        const failed = targets.value.find((item) => item.executionId === target.executionId) ?? target;
+        if (!isTerminal(failed)) failTrackedTarget(failed, errorMessage(error));
+      }
     } finally {
       const completed = targets.value.find((item) => item.executionId === target.executionId) ?? target;
       await refreshTarget(completed, request.database);
@@ -154,6 +155,16 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
 
     try {
       for (const target of targets.value) {
+        try {
+          runtime.addTask(target.executionId, request.fileName, request.filePath, target.connectionId, request.database);
+        } catch (error) {
+          failTrackedTarget(target, errorMessage(error));
+        }
+      }
+
+      for (const target of targets.value) {
+        if (isTerminal(target)) continue;
+
         if (stopRequested) {
           skipPendingTargets();
           return;
