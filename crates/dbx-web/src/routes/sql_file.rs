@@ -146,9 +146,7 @@ pub(crate) async fn run_validated_sql_file_request(
 
     progress(build_sql_file_progress(&request.execution_id, SqlFileStatus::Started, 0, 0, 0, 0, started_at, "", None));
 
-    if let Err(error) = execute_sql_file_content(app, request, &file_content, token, started_at, &progress).await {
-        progress(sql_file_error_progress(&request.execution_id, started_at, error));
-    }
+    let _ = execute_sql_file_content(app, request, &file_content, token, started_at, progress).await;
 }
 
 fn send_sql_file_progress(tx: &broadcast::Sender<String>, progress: SqlFileProgress) {
@@ -279,6 +277,40 @@ mod tests {
         let statuses = statuses.lock().unwrap();
         assert_eq!(statuses.first(), Some(&SqlFileStatus::Started));
         assert!(matches!(statuses.last(), Some(SqlFileStatus::Done | SqlFileStatus::Error | SqlFileStatus::Cancelled)));
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn shared_executor_emits_one_terminal_error_for_failing_sql() {
+        let data_dir = std::env::temp_dir().join(format!("dbx-web-sql-file-test-{}", uuid::Uuid::new_v4()));
+        let tmp_dir = data_dir.join("tmp");
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let storage = Storage::open(&data_dir.join("storage.db")).await.unwrap();
+        let app = Arc::new(AppState::new_with_plugin_dir(storage, data_dir.join("plugins")));
+        let connection_id = "saved-sqlite".to_string();
+        let config = sqlite_config(&connection_id, &data_dir.join("target.db").to_string_lossy());
+        app.storage.save_connections(std::slice::from_ref(&config)).await.unwrap();
+        app.configs.write().await.insert(connection_id.clone(), config);
+        let file_path = tmp_dir.join("failing.sql");
+        std::fs::write(&file_path, "not valid sqlite;").unwrap();
+        let request = SqlFileRequest {
+            execution_id: "single-target-failure".to_string(),
+            connection_id,
+            database: String::new(),
+            file_path: file_path.to_string_lossy().into_owned(),
+            continue_on_error: false,
+        };
+        let statuses = Arc::new(Mutex::new(Vec::new()));
+        let observed = statuses.clone();
+
+        run_validated_sql_file_request(&app, &data_dir, &request, CancellationToken::new(), move |progress| {
+            observed.lock().unwrap().push(progress.status);
+        })
+        .await;
+
+        let statuses = statuses.lock().unwrap();
+        assert_eq!(statuses.first(), Some(&SqlFileStatus::Started));
+        assert_eq!(statuses.iter().filter(|status| **status == SqlFileStatus::Error).count(), 1);
         let _ = std::fs::remove_dir_all(data_dir);
     }
 

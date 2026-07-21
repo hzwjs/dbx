@@ -214,6 +214,11 @@ impl SqlFileBatchRegistry {
         Some(snapshot)
     }
 
+    #[cfg(test)]
+    pub(crate) async fn test_file_path(&self, batch_id: &str) -> Option<String> {
+        self.entry(batch_id).await.map(|entry| entry.file_path.clone())
+    }
+
     pub async fn subscribe(
         &self,
         batch_id: &str,
