@@ -163,6 +163,7 @@ class Deferred<T> {
 function webSnapshot(batchId: string): WebSqlFileBatchSnapshot {
   return {
     batchId,
+    revision: 0,
     fileName: "seed.sql",
     database: "app",
     continueOnError: false,
@@ -180,6 +181,7 @@ class DeferredWebBatchRuntime {
   createdRequests: CreateWebSqlFileBatchRequest[] = [];
   activeSubscriptions = new Map<number, string>();
   closes = 0;
+  listens = 0;
   nextSubscription = 0;
 
   async create(request: CreateWebSqlFileBatchRequest) {
@@ -200,6 +202,7 @@ class DeferredWebBatchRuntime {
   }
 
   listen(batchId: string) {
+    this.listens += 1;
     const subscription = ++this.nextSubscription;
     this.activeSubscriptions.set(subscription, batchId);
     return () => {
@@ -324,6 +327,7 @@ test("unmounting while Web batch load is pending prevents a late subscription", 
   await flushBehavior(3);
 
   expect(runtime.activeSubscriptions.size).toBe(0);
+  expect(runtime.listens).toBe(0);
 });
 
 test("unmounting while Web batch start is pending prevents a late subscription", async () => {
@@ -342,6 +346,7 @@ test("unmounting while Web batch start is pending prevents a late subscription",
   await flushBehavior(3);
 
   expect(runtime.activeSubscriptions.size).toBe(0);
+  expect(runtime.listens).toBe(0);
 });
 
 test("closing while Web batch start is pending disconnects the late subscription", async () => {

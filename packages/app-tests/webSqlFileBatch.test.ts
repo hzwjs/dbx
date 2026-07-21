@@ -7,6 +7,7 @@ import { preferredWebSqlFileBatch, type WebSqlFileBatchSnapshot } from "@/lib/sq
 function snapshot(batchId: string, status: WebSqlFileBatchSnapshot["status"], updatedAtMs: number): WebSqlFileBatchSnapshot {
   return {
     batchId,
+    revision: updatedAtMs,
     fileName: "seed.sql",
     database: "app",
     continueOnError: true,

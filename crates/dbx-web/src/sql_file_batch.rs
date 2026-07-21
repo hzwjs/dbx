@@ -23,6 +23,7 @@ pub struct CreateSqlFileBatchRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SqlFileBatchSnapshot {
     pub batch_id: String,
+    pub revision: u64,
     pub file_name: String,
     pub database: String,
     pub continue_on_error: bool,
@@ -192,6 +193,7 @@ impl SqlFileBatchRegistry {
             .collect();
         let mut snapshot = SqlFileBatchSnapshot {
             batch_id: batch_id.clone(),
+            revision: 0,
             file_name,
             database: request.database,
             continue_on_error: request.continue_on_error,
@@ -264,6 +266,7 @@ impl SqlFileBatchRegistry {
         entry.token.cancel();
         let mut updated = snapshot.clone();
         updated.status = SqlFileBatchStatus::Cancelling;
+        updated.revision += 1;
         updated.updated_at_ms = now_ms();
         update_summary(&mut updated);
         *snapshot = updated.clone();
@@ -304,6 +307,7 @@ pub async fn run_sql_file_batch(
                 };
                 let mut updated = snapshot.clone();
                 updated.targets[target_index].status = SqlFileBatchTargetStatus::Running;
+                updated.revision += 1;
                 updated.updated_at_ms = now_ms();
                 update_summary(&mut updated);
                 *snapshot = updated.clone();
@@ -373,6 +377,7 @@ pub async fn run_sql_file_batch(
         updated.status = SqlFileBatchStatus::Completed;
     }
     updated.updated_at_ms = now_ms();
+    updated.revision += 1;
     update_summary(&mut updated);
     *snapshot = updated.clone();
     let _ = entry.updates.send(updated);
@@ -434,6 +439,7 @@ async fn update_entry(entry: &SqlFileBatchEntry, update: impl FnOnce(&mut SqlFil
     let mut snapshot = entry.snapshot.lock().await;
     let mut updated = snapshot.clone();
     update(&mut updated);
+    updated.revision += 1;
     updated.updated_at_ms = now_ms();
     update_summary(&mut updated);
     *snapshot = updated.clone();
@@ -528,6 +534,28 @@ mod tests {
             summary.as_object().unwrap().keys().map(String::as_str).collect::<BTreeSet<_>>(),
             BTreeSet::from(["cancelled", "failed", "partial", "skipped", "success"])
         );
+        assert_eq!(serde_json::to_value(&snapshot).unwrap()["revision"], 0);
+    }
+
+    #[tokio::test]
+    async fn snapshot_revision_increases_for_every_cancel_and_execution_update() {
+        let registry = Arc::new(SqlFileBatchRegistry::default());
+        let cancelled = registry.create(batch_request(&["cancelled"])).await.unwrap();
+        assert!(registry.cancel(&cancelled.batch_id).await);
+        assert_eq!(serde_json::to_value(registry.get(&cancelled.batch_id).await.unwrap()).unwrap()["revision"], 1);
+
+        let fixture = BatchFixture::new(&["executed"], false).await;
+        fixture.executor.finish_with("executed", SqlFileStatus::Done);
+        fixture.run().await;
+        let revisions: Vec<_> = fixture
+            .snapshots
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|snapshot| serde_json::to_value(snapshot).unwrap()["revision"].as_u64().unwrap())
+            .collect();
+        assert_eq!(revisions.first(), Some(&0));
+        assert!(revisions.windows(2).all(|pair| pair[1] == pair[0] + 1), "revisions: {revisions:?}");
     }
 
     #[tokio::test]

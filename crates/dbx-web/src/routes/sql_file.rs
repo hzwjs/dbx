@@ -179,7 +179,9 @@ fn safe_uploaded_sql_path(tmp_dir: &Path, file_name: &str) -> Result<PathBuf, Ap
     if base_name.is_empty() || base_name == "." || base_name == ".." {
         return Err(AppError("Invalid SQL file name".to_string()));
     }
-    Ok(tmp_dir.join(format!("{}-{base_name}", uuid::Uuid::new_v4())))
+    let upload_dir = tmp_dir.join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&upload_dir).map_err(|error| AppError(error.to_string()))?;
+    Ok(upload_dir.join(base_name))
 }
 
 pub(crate) fn validated_uploaded_sql_path(data_dir: &Path, file_path: &str) -> Result<PathBuf, AppError> {
@@ -242,8 +244,8 @@ mod tests {
             Err(error) => panic!("{}", error.0),
         };
 
-        assert_eq!(path.parent(), Some(tmp_dir.as_path()));
-        assert!(path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with("-outside.sql")));
+        assert_eq!(path.parent().and_then(|parent| parent.parent()), Some(tmp_dir.as_path()));
+        assert_eq!(path.file_name().and_then(|name| name.to_str()), Some("outside.sql"));
         let _ = std::fs::remove_dir_all(data_dir);
     }
 
@@ -259,6 +261,8 @@ mod tests {
         std::fs::write(&second, "select 'second';").unwrap();
 
         assert_ne!(first, second);
+        assert_eq!(first.file_name().and_then(|name| name.to_str()), Some("seed.sql"));
+        assert_eq!(second.file_name().and_then(|name| name.to_str()), Some("seed.sql"));
         assert_eq!(std::fs::read_to_string(first).unwrap(), "select 'first';");
         let _ = std::fs::remove_dir_all(data_dir);
     }

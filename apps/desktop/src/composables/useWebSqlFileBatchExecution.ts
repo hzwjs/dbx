@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, getCurrentScope, onScopeDispose, ref } from "vue";
 import { preferredWebSqlFileBatch, type CreateWebSqlFileBatchRequest, type WebSqlFileBatchSnapshot } from "@/lib/sql/webSqlFileBatch";
 
 export interface WebSqlFileBatchRuntime {
@@ -19,16 +19,22 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
   let unlisten: (() => void) | undefined;
   let loadGeneration = 0;
   let pendingLoads = 0;
-  let snapshotRevision = 0;
+  let active = true;
 
-  function writeSnapshots(snapshots: WebSqlFileBatchSnapshot[]) {
-    snapshotRevision += 1;
-    batches.value = snapshots;
+  function mergeSnapshots(snapshots: WebSqlFileBatchSnapshot[]) {
+    const current = new Map(batches.value.map((snapshot) => [snapshot.batchId, snapshot]));
+    const merged = snapshots.map((snapshot) => {
+      const existing = current.get(snapshot.batchId);
+      current.delete(snapshot.batchId);
+      return existing && existing.revision >= snapshot.revision ? existing : snapshot;
+    });
+    batches.value = [...merged, ...current.values()];
   }
 
   function replaceSnapshot(snapshot: WebSqlFileBatchSnapshot) {
-    const existing = batches.value.some((item) => item.batchId === snapshot.batchId);
-    writeSnapshots(existing ? batches.value.map((item) => (item.batchId === snapshot.batchId ? snapshot : item)) : [snapshot, ...batches.value]);
+    const existing = batches.value.find((item) => item.batchId === snapshot.batchId);
+    if (existing && existing.revision >= snapshot.revision) return;
+    batches.value = existing ? batches.value.map((item) => (item.batchId === snapshot.batchId ? snapshot : item)) : [snapshot, ...batches.value];
   }
 
   function disconnect() {
@@ -38,6 +44,7 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
 
   function subscribe(batchId: string) {
     disconnect();
+    if (!active) return;
     unlisten = runtime.listen(batchId, (snapshot) => {
       if (selectedBatchId.value !== batchId) return;
       replaceSnapshot(snapshot);
@@ -56,9 +63,9 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
     loading.value = true;
     try {
       const snapshots = await runtime.list();
-      if (generation !== loadGeneration) return;
+      if (!active || generation !== loadGeneration) return;
 
-      writeSnapshots(snapshots);
+      mergeSnapshots(snapshots);
       const selected = selectedBatchId.value ? batches.value.find((snapshot) => snapshot.batchId === selectedBatchId.value) : undefined;
       select(selected?.batchId ?? preferredWebSqlFileBatch(batches.value)?.batchId);
     } finally {
@@ -72,8 +79,9 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
     loadGeneration += 1;
     try {
       const snapshot = await runtime.create(request);
+      if (!active) return;
       loadGeneration += 1;
-      writeSnapshots([snapshot, ...batches.value.filter((item) => item.batchId !== snapshot.batchId)]);
+      replaceSnapshot(snapshot);
       select(snapshot.batchId);
     } finally {
       starting.value = false;
@@ -87,12 +95,19 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
     cancelling.value = true;
     try {
       await runtime.cancel(batchId);
-      const revisionAtRequest = snapshotRevision;
       const snapshot = await runtime.get(batchId);
-      if (revisionAtRequest === snapshotRevision && selectedBatchId.value === batchId) replaceSnapshot(snapshot);
+      if (active && selectedBatchId.value === batchId) replaceSnapshot(snapshot);
     } finally {
       cancelling.value = false;
     }
+  }
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      active = false;
+      loadGeneration += 1;
+      disconnect();
+    });
   }
 
   return { batches, selectedBatchId, currentBatch, loading, starting, cancelling, load, select, start, cancel, disconnect };

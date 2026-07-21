@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { effectScope } from "vue";
 import { test } from "vitest";
 import { useWebSqlFileBatchExecution, type WebSqlFileBatchRuntime } from "@/composables/useWebSqlFileBatchExecution";
 import type { CreateWebSqlFileBatchRequest, WebSqlFileBatchSnapshot } from "@/lib/sql/webSqlFileBatch";
@@ -10,7 +11,7 @@ const request: CreateWebSqlFileBatchRequest = {
   continueOnError: true,
 };
 
-function snapshot(batchId: string, status: WebSqlFileBatchSnapshot["status"], updatedAtMs: number, targetCount = 1): WebSqlFileBatchSnapshot {
+function snapshot(batchId: string, status: WebSqlFileBatchSnapshot["status"], updatedAtMs: number, targetCount = 1, revision = updatedAtMs): WebSqlFileBatchSnapshot {
   return {
     batchId,
     fileName: "seed.sql",
@@ -19,6 +20,7 @@ function snapshot(batchId: string, status: WebSqlFileBatchSnapshot["status"], up
     status,
     createdAtMs: updatedAtMs - 1,
     updatedAtMs,
+    revision,
     targets: Array.from({ length: targetCount }, (_, index) => ({
       connectionId: `connection-${index + 1}`,
       executionId: `${batchId}-${index + 1}`,
@@ -33,7 +35,7 @@ function snapshot(batchId: string, status: WebSqlFileBatchSnapshot["status"], up
       failures: [],
     })),
     summary: { success: 0, partial: 0, failed: 0, cancelled: 0, skipped: 0 },
-  };
+  } as WebSqlFileBatchSnapshot;
 }
 
 class FakeRuntime implements WebSqlFileBatchRuntime {
@@ -45,6 +47,7 @@ class FakeRuntime implements WebSqlFileBatchRuntime {
   createdRequests: CreateWebSqlFileBatchRequest[] = [];
   cancelled: string[] = [];
   closes = 0;
+  listens = 0;
   private handlers = new Map<string, (next: WebSqlFileBatchSnapshot) => void>();
 
   async create(next: CreateWebSqlFileBatchRequest) {
@@ -66,6 +69,7 @@ class FakeRuntime implements WebSqlFileBatchRuntime {
   }
 
   listen(batchId: string, handler: (next: WebSqlFileBatchSnapshot) => void) {
+    this.listens += 1;
     this.handlers.set(batchId, handler);
     return () => {
       this.closes += 1;
@@ -198,6 +202,83 @@ test("a cancel GET cannot overwrite a newer snapshot written by a concurrent loa
 
   assert.equal(batch.currentBatch.value?.status, "cancelled");
   assert.equal(batch.currentBatch.value?.updatedAtMs, 30);
+});
+
+test("a newer cancel GET wins after an earlier captured load arrives first", async () => {
+  const runtime = new FakeRuntime();
+  const staleLoad = new Deferred<WebSqlFileBatchSnapshot[]>();
+  const newerGet = new Deferred<WebSqlFileBatchSnapshot>();
+  runtime.listQueue.push(Promise.resolve([snapshot("running", "running", 10, 1, 1)]), staleLoad.promise);
+  runtime.getQueue.push(newerGet.promise);
+  const batch = useWebSqlFileBatchExecution(runtime);
+  await batch.load();
+
+  const loading = batch.load();
+  const cancelling = batch.cancel();
+  await Promise.resolve();
+  staleLoad.resolve([snapshot("running", "running", 10, 1, 1)]);
+  await loading;
+  newerGet.resolve(snapshot("running", "cancelled", 30, 1, 3));
+  await cancelling;
+
+  assert.equal(batch.currentBatch.value?.status, "cancelled");
+  assert.equal(batch.currentBatch.value?.revision, 3);
+});
+
+test("list merges batches by their independent server revisions", async () => {
+  const runtime = new FakeRuntime();
+  runtime.listQueue.push(
+    Promise.resolve([snapshot("a", "cancelled", 30, 1, 3), snapshot("b", "running", 10, 1, 1)]),
+    Promise.resolve([snapshot("a", "cancelling", 20, 1, 2), snapshot("b", "cancelled", 20, 1, 2)]),
+  );
+  const batch = useWebSqlFileBatchExecution(runtime);
+  await batch.load();
+  await batch.load();
+
+  assert.equal(batch.batches.value.find((item) => item.batchId === "a")?.status, "cancelled");
+  assert.equal(batch.batches.value.find((item) => item.batchId === "b")?.status, "cancelled");
+});
+
+test("a repeated snapshot revision is idempotent", async () => {
+  const runtime = new FakeRuntime();
+  runtime.listed = [snapshot("same", "cancelled", 30, 1, 3)];
+  const batch = useWebSqlFileBatchExecution(runtime);
+  await batch.load();
+
+  runtime.emit(snapshot("same", "cancelling", 40, 1, 3));
+
+  assert.equal(batch.currentBatch.value?.status, "cancelled");
+  assert.equal(batch.currentBatch.value?.revision, 3);
+});
+
+test("scope disposal prevents a pending load from ever creating a subscription", async () => {
+  const runtime = new FakeRuntime();
+  const deferred = new Deferred<WebSqlFileBatchSnapshot[]>();
+  runtime.listQueue.push(deferred.promise);
+  const scope = effectScope();
+  const batch = scope.run(() => useWebSqlFileBatchExecution(runtime))!;
+
+  const loading = batch.load();
+  scope.stop();
+  deferred.resolve([snapshot("late-load", "running", 1, 1, 0)]);
+  await loading;
+
+  assert.equal(runtime.listens, 0);
+});
+
+test("scope disposal prevents a pending start from ever creating a subscription", async () => {
+  const runtime = new FakeRuntime();
+  const deferred = new Deferred<WebSqlFileBatchSnapshot>();
+  runtime.create = async () => deferred.promise;
+  const scope = effectScope();
+  const batch = scope.run(() => useWebSqlFileBatchExecution(runtime))!;
+
+  const starting = batch.start(request);
+  scope.stop();
+  deferred.resolve(snapshot("late-start", "running", 1, 1, 0));
+  await starting;
+
+  assert.equal(runtime.listens, 0);
 });
 
 test("a load that started before start cannot replace the created batch", async () => {
