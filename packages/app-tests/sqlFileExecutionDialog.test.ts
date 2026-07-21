@@ -75,8 +75,8 @@ test("Web uses the shared server batch execution path", () => {
   assert.match(dialogSource, /webBatch\.start/);
   assert.match(dialogSource, /webBatch\.cancel/);
   assert.match(dialogSource, /webBatch\.load/);
-  assert.match(dialogSource, /for \(const targetConnectionId of selectedConnectionIds\.value\)/);
-  assert.match(dialogSource, /await prepareBatchTarget\(targetConnectionId, database\.value\.trim\(\)\)/);
+  assert.match(dialogSource, /for \(const targetConnectionId of connectionIds\)/);
+  assert.match(dialogSource, /await prepareBatchTarget\(targetConnectionId, targetDatabase, previewSql\)/);
   assert.match(dialogSource, /if \(!isDesktop\) webBatch\.disconnect\(\)/);
   assert.match(dialogSource, /watch\(\s*open,\s*\(value\) => \{\s*if \(!value\) \{\s*if \(!isDesktop\) webBatch\.disconnect\(\)/);
   assert.match(dialogSource, /webBatch\.batches\.value\.length > 1/);
@@ -84,6 +84,34 @@ test("Web uses the shared server batch execution path", () => {
   assert.doesNotMatch(dialogSource, /listenSqlFileProgressById/);
   assert.doesNotMatch(dialogSource, /async function startExecution\(/);
   assert.doesNotMatch(dialogSource, /async function cancelExecution\(/);
+});
+
+test("Web load and start completion keep a closed dialog disconnected", () => {
+  assert.match(dialogSource, /async function loadWebBatchesForDialog\(\)/);
+  assert.match(dialogSource, /await webBatch\.load\(\)[\s\S]*finally \{\s*if \(!open\.value\) webBatch\.disconnect\(\)/);
+  assert.match(dialogSource, /await webBatch\.start\([\s\S]*if \(!open\.value\) webBatch\.disconnect\(\)/);
+
+  const closeHandlerStart = dialogSource.indexOf("function handleOpenChange");
+  const closeHandlerEnd = dialogSource.indexOf("\n\nwatch", closeHandlerStart);
+  assert.ok(closeHandlerStart >= 0 && closeHandlerEnd > closeHandlerStart);
+  assert.doesNotMatch(dialogSource.slice(closeHandlerStart, closeHandlerEnd), /cancel/);
+});
+
+test("Web confirmation preflight is single-flight and submits immutable snapshots", () => {
+  assert.match(dialogSource, /const webPreflightStarting = ref\(false\)/);
+  assert.match(dialogSource, /const executionActive = computed\([\s\S]*webPreflightStarting\.value/);
+
+  const startHandlerStart = dialogSource.indexOf("async function startWebBatchExecution");
+  const startHandlerEnd = dialogSource.indexOf("\n\nasync function stopBatch", startHandlerStart);
+  assert.ok(startHandlerStart >= 0 && startHandlerEnd > startHandlerStart);
+  const startHandler = dialogSource.slice(startHandlerStart, startHandlerEnd);
+  assert.match(startHandler, /if \(isDesktop \|\| webPreflightStarting\.value \|\| !canStart\.value \|\| !preview\.value\) return/);
+  assert.match(startHandler, /webPreflightStarting\.value = true;[\s\S]*const connectionIds = \[\.\.\.selectedConnectionIds\.value\];[\s\S]*const targetDatabase = database\.value\.trim\(\);[\s\S]*const selectedPreview = preview\.value;[\s\S]*const filePath = selectedPreview\.filePath;[\s\S]*const previewSql = selectedPreview\.preview;[\s\S]*const capturedContinueOnError = continueOnError\.value;[\s\S]*for \(const targetConnectionId of connectionIds\)/);
+  assert.match(startHandler, /prepareBatchTarget\(targetConnectionId, targetDatabase, previewSql\)/);
+  assert.match(startHandler, /await webBatch\.start\(\{\s*connectionIds,\s*database: targetDatabase,\s*filePath,\s*continueOnError: capturedContinueOnError/);
+  assert.match(startHandler, /finally \{\s*webPreflightStarting\.value = false/);
+  assert.match(dialogSource, /function toggleTargetSelection\(id: string\) \{\s*if \(executionActive\.value\) return/);
+  assert.match(dialogSource, /<Button variant="outline" class="[^"]*" :disabled="executionActive">/);
 });
 
 test("desktop batch runtime delegates existing APIs and tracks target metadata", () => {

@@ -59,6 +59,7 @@ const batchDatabase = ref("");
 const databaseOptions = ref<string[]>([]);
 const loadingDatabases = ref(false);
 const continueOnError = ref(false);
+const webPreflightStarting = ref(false);
 
 const sqlConnections = computed(() => store.connections.filter((c) => !["redis", "mongodb", "elasticsearch", "qdrant", "milvus", "weaviate", "chromadb", "etcd", "zookeeper", "mq", "nacos"].includes(c.db_type)));
 
@@ -69,17 +70,18 @@ const sameTypeSqlConnections = computed(() => {
   return sqlConnections.value.filter((connection) => connection.db_type === baselineDbType);
 });
 
-async function prepareBatchTarget(targetConnectionId: string, targetDatabase: string): Promise<"ready" | "declined"> {
+async function prepareBatchTarget(targetConnectionId: string, targetDatabase: string, capturedPreviewSql?: string): Promise<"ready" | "declined"> {
   await store.ensureConnected(targetConnectionId);
   const targetConnection = sqlConnections.value.find((connection) => connection.id === targetConnectionId);
   if (!targetConnection) throw new Error(`Connection not found: ${targetConnectionId}`);
-  if (!preview.value) throw new Error("SQL file preview is unavailable");
+  const previewSql = capturedPreviewSql ?? preview.value?.preview;
+  if (previewSql === undefined) throw new Error("SQL file preview is unavailable");
 
   const productionContext = productionContextForDatabase(targetConnection, targetDatabase);
   if (!productionContext.active) return "ready";
 
   const confirmed = await productionSafetyStore.requestConfirmation({
-    sql: preview.value.preview,
+    sql: previewSql,
     connectionName: targetConnection.name,
     database: targetDatabase,
     productionDatabases: productionContext.databases,
@@ -125,7 +127,7 @@ const displayedBatchTargets = computed(() => (isDesktop ? batchTargets.value : (
 const displayedBatchSummary = computed(() => (isDesktop ? batchSummary.value : (webBatch.currentBatch.value?.summary ?? emptySummary())));
 const displayedBatchDatabase = computed(() => (isDesktop ? batchDatabase.value : (webBatch.currentBatch.value?.database ?? "")));
 const batchExecutionActive = computed(() => (isDesktop ? batchRunning.value : webBatch.currentBatch.value?.status === "running" || webBatch.currentBatch.value?.status === "cancelling"));
-const executionActive = computed(() => batchExecutionActive.value || (!isDesktop && webBatch.starting.value));
+const executionActive = computed(() => batchExecutionActive.value || (!isDesktop && (webBatch.starting.value || webPreflightStarting.value)));
 const completedTargetCount = computed(() => displayedBatchTargets.value.filter((target) => target.status !== "pending" && target.status !== "running").length);
 const batchProgressPercent = computed(() => (displayedBatchTargets.value.length > 0 ? Math.round((completedTargetCount.value / displayedBatchTargets.value.length) * 100) : 0));
 const batchElapsedMs = computed(() => displayedBatchTargets.value.reduce((total, target) => total + target.elapsedMs, 0));
@@ -203,7 +205,7 @@ function toggleTargetExpanded(executionId: string) {
 }
 
 function toggleTargetSelection(id: string) {
-  if (batchExecutionActive.value) return;
+  if (executionActive.value) return;
   selectedConnectionIds.value = selectedConnectionIds.value.includes(id) ? selectedConnectionIds.value.filter((selectedId) => selectedId !== id) : [...selectedConnectionIds.value, id];
 }
 
@@ -353,22 +355,32 @@ async function startBatchExecution() {
 }
 
 async function startWebBatchExecution() {
-  if (isDesktop || !canStart.value || !preview.value) return;
+  if (isDesktop || webPreflightStarting.value || !canStart.value || !preview.value) return;
+  webPreflightStarting.value = true;
+  const connectionIds = [...selectedConnectionIds.value];
+  const targetDatabase = database.value.trim();
+  const selectedPreview = preview.value;
+  const filePath = selectedPreview.filePath;
+  const previewSql = selectedPreview.preview;
+  const capturedContinueOnError = continueOnError.value;
 
   try {
-    for (const targetConnectionId of selectedConnectionIds.value) {
-      if ((await prepareBatchTarget(targetConnectionId, database.value.trim())) === "declined") return;
+    for (const targetConnectionId of connectionIds) {
+      if ((await prepareBatchTarget(targetConnectionId, targetDatabase, previewSql)) === "declined") return;
     }
 
     expandedTargetIds.value = [];
     await webBatch.start({
-      connectionIds: [...selectedConnectionIds.value],
-      database: database.value.trim(),
-      filePath: preview.value.filePath,
-      continueOnError: continueOnError.value,
+      connectionIds,
+      database: targetDatabase,
+      filePath,
+      continueOnError: capturedContinueOnError,
     });
+    if (!open.value) webBatch.disconnect();
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
+  } finally {
+    webPreflightStarting.value = false;
   }
 }
 
@@ -396,6 +408,16 @@ function handleOpenChange(nextOpen: boolean) {
     if (!isDesktop) webBatch.disconnect();
   }
   open.value = nextOpen;
+}
+
+async function loadWebBatchesForDialog() {
+  try {
+    await webBatch.load();
+  } catch (e: any) {
+    toast(e?.message || String(e), 5000);
+  } finally {
+    if (!open.value) webBatch.disconnect();
+  }
 }
 
 watch(baselineConnectionId, (id) => {
@@ -444,7 +466,7 @@ watch(
     if (baselineConnectionId.value) {
       loadDatabasesForConnection(baselineConnectionId.value);
     }
-    if (!isDesktop) void webBatch.load().catch((e: any) => toast(e?.message || String(e), 5000));
+    if (!isDesktop) void loadWebBatchesForDialog();
     // When opened from the SQL Files panel with a pre-selected file, load its
     // preview automatically so the user can review statements before running.
     if (props.prefillFilePath) {
@@ -513,7 +535,7 @@ watch(
               <Label class="text-xs">{{ t("sqlFile.connection") }}</Label>
               <Popover>
                 <PopoverTrigger as-child>
-                  <Button variant="outline" class="h-8 w-full justify-between px-3 text-xs font-normal" :disabled="batchExecutionActive">
+                  <Button variant="outline" class="h-8 w-full justify-between px-3 text-xs font-normal" :disabled="executionActive">
                     <span v-if="selectedConnectionIds.length" class="min-w-0 truncate">
                       {{ t("sqlFile.selectedCount", { count: selectedConnectionIds.length }) }}
                     </span>
