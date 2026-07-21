@@ -384,7 +384,8 @@ async function stopWebBatch() {
   }
 }
 
-function selectWebBatch(batchId: string) {
+function selectWebBatch(batchId: unknown) {
+  if (typeof batchId !== "string") return;
   expandedTargetIds.value = [];
   webBatch.select(batchId);
 }
