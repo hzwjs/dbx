@@ -131,7 +131,7 @@ export function useExportTracker() {
     return task;
   }
 
-  function addSqlFileTask(executionId: string, fileName: string, filePath: string): ExportTask {
+  function addSqlFileTask(executionId: string, fileName: string, filePath: string, connectionId?: string, database?: string): ExportTask {
     const task = reactive<ExportTask>({
       exportId: executionId,
       kind: "sql-file",
@@ -148,6 +148,8 @@ export function useExportTracker() {
       affectedRows: 0,
       elapsedMs: 0,
       statementSummary: "",
+      targetConnectionId: connectionId,
+      targetDatabase: database,
     });
     taskMap.set(executionId, task);
     return task;

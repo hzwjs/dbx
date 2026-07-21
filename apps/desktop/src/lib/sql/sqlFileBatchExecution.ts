@@ -69,7 +69,8 @@ export function summarizeSqlFileBatch(targets: SqlFileBatchTargetState[]): Recor
   const summary = { success: 0, partial: 0, failed: 0, cancelled: 0, skipped: 0 };
 
   for (const target of targets) {
-    if (target.status in summary) summary[target.status]++;
+    if (target.status === "pending" || target.status === "running") continue;
+    summary[target.status]++;
   }
 
   return summary;
