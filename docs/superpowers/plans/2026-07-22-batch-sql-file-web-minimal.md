@@ -141,6 +141,7 @@ Use serde camelCase and the exact status strings from the design:
 #[serde(rename_all = "camelCase")]
 pub struct SqlFileBatchSnapshot {
     pub batch_id: String,
+    pub revision: u64,
     pub file_name: String,
     pub database: String,
     pub continue_on_error: bool,
@@ -185,7 +186,7 @@ impl SqlFileBatchRegistry {
 }
 ```
 
-`create` rejects an empty list and duplicate IDs. `list` sorts by `created_at_ms` descending. Mutators lock only long enough to replace a snapshot and send its clone.
+`create` rejects an empty list and duplicate IDs. `list` sorts by `created_at_ms` descending. Each batch starts with a server-owned monotonic `revision`; every authoritative mutation increments it under the same snapshot lock before broadcasting. Mutators lock only long enough to replace a snapshot and send its clone.
 
 The private entry also stores the canonical `file_path`; the public snapshot does not expose it. Keep this module specific to SQL-file batches—do not introduce a generic task registry.
 
@@ -402,9 +403,10 @@ test("an SSE snapshot replaces rather than merges local state", async () => {});
 test("switching batches closes the previous EventSource", async () => {});
 test("closing the dialog subscription does not cancel the server batch", async () => {});
 test("cancel delegates once and reloads the authoritative snapshot", async () => {});
+test("older GET or list snapshots cannot replace a newer server revision", async () => {});
 ```
 
-Use injected runtime functions in the composable tests; do not make real network calls.
+Use injected runtime functions in the composable tests; do not make real network calls. All local snapshot writes must compare the per-batch server `revision`, rather than using client request-arrival order.
 
 - [ ] **Step 2: Run tests and verify failure**
 
