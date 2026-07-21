@@ -1,6 +1,7 @@
 mod auth;
 mod error;
 mod routes;
+mod sql_file_batch;
 mod sse;
 mod state;
 
