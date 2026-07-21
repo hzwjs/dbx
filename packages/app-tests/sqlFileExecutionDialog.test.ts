@@ -239,7 +239,7 @@ async function mountWebDialog(runtime: DeferredWebBatchRuntime, prefillFile = fa
   mountedApps.push(app);
   app.mount(container);
   await flushBehavior(3);
-  return { state };
+  return { app, state };
 }
 
 function buttonWithText(text: string) {
@@ -294,6 +294,19 @@ test("closing while Web batch load is pending disconnects the late subscription"
   await flushBehavior();
   load.resolve([webSnapshot("late-load")]);
   await flushBehavior(3);
+
+  expect(runtime.activeSubscriptions.size).toBe(0);
+  expect(runtime.closes).toBe(1);
+});
+
+test("unmounting the Web dialog disconnects its EventSource subscription", async () => {
+  const runtime = new DeferredWebBatchRuntime();
+  runtime.listQueue.push(Promise.resolve([webSnapshot("mounted-batch")]));
+  const { app } = await mountWebDialog(runtime);
+  expect([...runtime.activeSubscriptions.values()]).toEqual(["mounted-batch"]);
+
+  app.unmount();
+  mountedApps.splice(mountedApps.indexOf(app), 1);
 
   expect(runtime.activeSubscriptions.size).toBe(0);
   expect(runtime.closes).toBe(1);

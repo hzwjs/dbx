@@ -179,7 +179,7 @@ fn safe_uploaded_sql_path(tmp_dir: &Path, file_name: &str) -> Result<PathBuf, Ap
     if base_name.is_empty() || base_name == "." || base_name == ".." {
         return Err(AppError("Invalid SQL file name".to_string()));
     }
-    Ok(tmp_dir.join(base_name))
+    Ok(tmp_dir.join(format!("{}-{base_name}", uuid::Uuid::new_v4())))
 }
 
 pub(crate) fn validated_uploaded_sql_path(data_dir: &Path, file_path: &str) -> Result<PathBuf, AppError> {
@@ -242,7 +242,24 @@ mod tests {
             Err(error) => panic!("{}", error.0),
         };
 
-        assert_eq!(path, tmp_dir.join("outside.sql"));
+        assert_eq!(path.parent(), Some(tmp_dir.as_path()));
+        assert!(path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with("-outside.sql")));
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn repeated_upload_name_cannot_overwrite_the_first_uploaded_sql_file() {
+        let data_dir = std::env::temp_dir().join(format!("dbx-web-sql-file-test-{}", uuid::Uuid::new_v4()));
+        let tmp_dir = data_dir.join("tmp");
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let first = safe_uploaded_sql_path(&tmp_dir, "seed.sql").unwrap_or_else(|error| panic!("{}", error.0));
+        std::fs::write(&first, "select 'first';").unwrap();
+        let second = safe_uploaded_sql_path(&tmp_dir, "seed.sql").unwrap_or_else(|error| panic!("{}", error.0));
+        std::fs::write(&second, "select 'second';").unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read_to_string(first).unwrap(), "select 'first';");
         let _ = std::fs::remove_dir_all(data_dir);
     }
 

@@ -116,6 +116,7 @@ struct SqlFileBatchTestHooks {
     before_subscribe: std::sync::Mutex<Option<Arc<TestGate>>>,
     before_broadcast: std::sync::Mutex<Option<Arc<TestGate>>>,
     before_cancel_lock: std::sync::Mutex<Option<Arc<tokio::sync::Notify>>>,
+    before_finish_completed: std::sync::Mutex<Option<Arc<TestGate>>>,
 }
 
 #[cfg(test)]
@@ -144,6 +145,13 @@ impl SqlFileBatchEntry {
     fn notify_before_cancel_lock(&self) {
         if let Some(notify) = self.test_hooks.before_cancel_lock.lock().unwrap().take() {
             notify.notify_one();
+        }
+    }
+
+    async fn wait_before_finish_completed(&self) {
+        let gate = { self.test_hooks.before_finish_completed.lock().unwrap().take() };
+        if let Some(gate) = gate {
+            gate.wait_for_release().await;
         }
     }
 }
@@ -350,10 +358,25 @@ pub async fn run_sql_file_batch(
         }
     }
 
-    update_entry(&entry, |snapshot| {
-        snapshot.status = SqlFileBatchStatus::Completed;
-    })
-    .await;
+    #[cfg(test)]
+    entry.wait_before_finish_completed().await;
+    let mut snapshot = entry.snapshot.lock().await;
+    let mut updated = snapshot.clone();
+    if entry.token.is_cancelled() {
+        for target in &mut updated.targets {
+            if target.status == SqlFileBatchTargetStatus::Pending {
+                target.status = SqlFileBatchTargetStatus::Skipped;
+            }
+        }
+        updated.status = SqlFileBatchStatus::Cancelled;
+    } else {
+        updated.status = SqlFileBatchStatus::Completed;
+    }
+    updated.updated_at_ms = now_ms();
+    update_summary(&mut updated);
+    *snapshot = updated.clone();
+    let _ = entry.updates.send(updated);
+    drop(snapshot);
 }
 
 async fn apply_progress(entry: &SqlFileBatchEntry, execution_id: &str, progress: SqlFileProgress) {
@@ -730,6 +753,23 @@ mod tests {
         let statuses: Vec<_> = std::iter::from_fn(|| updates.try_recv().ok()).map(|snapshot| snapshot.status).collect();
         let cancelling = statuses.iter().position(|status| *status == SqlFileBatchStatus::Cancelling).unwrap();
         assert!(!statuses[cancelling + 1..].contains(&SqlFileBatchStatus::Running));
+    }
+
+    #[tokio::test]
+    async fn accepted_cancel_before_finalization_cannot_be_overwritten_by_completed() {
+        let fixture = BatchFixture::new(&["a"], false).await;
+        fixture.executor.finish_with("a", SqlFileStatus::Done);
+        let entry = fixture.registry.entry(&fixture.batch_id).await.unwrap();
+        let gate = Arc::new(TestGate::default());
+        *entry.test_hooks.before_finish_completed.lock().unwrap() = Some(gate.clone());
+
+        let worker = fixture.spawn();
+        gate.wait_until_arrived().await;
+        assert!(fixture.registry.cancel(&fixture.batch_id).await);
+        gate.release();
+        worker.await.unwrap();
+
+        assert_eq!(fixture.registry.get(&fixture.batch_id).await.unwrap().status, SqlFileBatchStatus::Cancelled);
     }
 
     fn batch_request(connection_ids: &[&str]) -> CreateSqlFileBatchRequest {

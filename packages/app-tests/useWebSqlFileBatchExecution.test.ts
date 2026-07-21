@@ -41,6 +41,7 @@ class FakeRuntime implements WebSqlFileBatchRuntime {
   listQueue: Promise<WebSqlFileBatchSnapshot[]>[] = [];
   created = snapshot("created", "running", 10);
   fetched = new Map<string, WebSqlFileBatchSnapshot>();
+  getQueue: Promise<WebSqlFileBatchSnapshot>[] = [];
   createdRequests: CreateWebSqlFileBatchRequest[] = [];
   cancelled: string[] = [];
   closes = 0;
@@ -56,7 +57,7 @@ class FakeRuntime implements WebSqlFileBatchRuntime {
   }
 
   async get(batchId: string) {
-    return this.fetched.get(batchId) ?? this.created;
+    return this.getQueue.shift() ?? this.fetched.get(batchId) ?? this.created;
   }
 
   async cancel(batchId: string) {
@@ -160,6 +161,25 @@ test("cancel delegates once and reloads the authoritative snapshot", async () =>
 
   assert.deepEqual(runtime.cancelled, ["running"]);
   assert.deepEqual(batch.currentBatch.value, refreshed);
+});
+
+test("a cancel GET cannot overwrite an SSE update that arrived after the GET started", async () => {
+  const runtime = new FakeRuntime();
+  const initial = snapshot("running", "running", 10);
+  const staleGet = new Deferred<WebSqlFileBatchSnapshot>();
+  runtime.listed = [initial];
+  runtime.getQueue.push(staleGet.promise);
+  const batch = useWebSqlFileBatchExecution(runtime);
+  await batch.load();
+
+  const cancelling = batch.cancel();
+  await Promise.resolve();
+  runtime.emit(snapshot("running", "cancelled", 30));
+  staleGet.resolve(snapshot("running", "cancelling", 20));
+  await cancelling;
+
+  assert.equal(batch.currentBatch.value?.status, "cancelled");
+  assert.equal(batch.currentBatch.value?.updatedAtMs, 30);
 });
 
 test("a load that started before start cannot replace the created batch", async () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { uuid } from "@/lib/common/utils";
 import { useI18n } from "vue-i18n";
 import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
@@ -412,6 +412,10 @@ function handleOpenChange(nextOpen: boolean) {
   }
   open.value = nextOpen;
 }
+
+onBeforeUnmount(() => {
+  if (!isDesktop) webBatch.disconnect();
+});
 
 async function loadWebBatchesForDialog() {
   try {

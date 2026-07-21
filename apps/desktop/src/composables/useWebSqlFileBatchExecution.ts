@@ -19,8 +19,10 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
   let unlisten: (() => void) | undefined;
   let loadGeneration = 0;
   let pendingLoads = 0;
+  let snapshotRevision = 0;
 
   function replaceSnapshot(snapshot: WebSqlFileBatchSnapshot) {
+    snapshotRevision += 1;
     const existing = batches.value.some((item) => item.batchId === snapshot.batchId);
     batches.value = existing ? batches.value.map((item) => (item.batchId === snapshot.batchId ? snapshot : item)) : [snapshot, ...batches.value];
   }
@@ -81,7 +83,9 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
     cancelling.value = true;
     try {
       await runtime.cancel(batchId);
-      replaceSnapshot(await runtime.get(batchId));
+      const revisionAtRequest = snapshotRevision;
+      const snapshot = await runtime.get(batchId);
+      if (revisionAtRequest === snapshotRevision && selectedBatchId.value === batchId) replaceSnapshot(snapshot);
     } finally {
       cancelling.value = false;
     }
