@@ -28,19 +28,19 @@ test("SQL file execution dialog keeps actions visible within narrow viewports", 
 });
 
 test("SQL file execution dialog preserves cancel, close, and retry actions", () => {
-  assert.match(dialogSource, /<template v-if="running">[\s\S]*@click="open = false"[\s\S]*@click="cancelExecution"/);
-  assert.match(dialogSource, /<template v-else>[\s\S]*@click="open = false"[\s\S]*:disabled="!canStart" @click="startExecution"/);
-  assert.match(dialogSource, /terminalStatus\.value = cancelRequested\.value \? "cancelled" : "error"/);
+  assert.match(dialogSource, /<template v-if="batchExecutionActive">[\s\S]*@click="handleOpenChange\(false\)"[\s\S]*@click="stopWebBatch"/);
+  assert.match(dialogSource, /<template v-else>[\s\S]*@click="handleOpenChange\(false\)"[\s\S]*:disabled="!canStart" @click="startWebBatchExecution"/);
+  assert.match(dialogSource, /async function stopWebBatch\(\)[\s\S]*await webBatch\.cancel\(\)/);
 });
 
 test("desktop SQL file execution renders ordered multi-target controls and batch actions", () => {
   assert.match(dialogSource, /const selectedConnectionIds = ref<string\[\]>\(\[\]\)/);
-  assert.match(dialogSource, /<Popover v-if="isDesktop"/);
+  assert.match(dialogSource, /<Popover>/);
   assert.match(dialogSource, /v-for="c in sameTypeSqlConnections"/);
   assert.match(dialogSource, /@click="toggleTargetSelection\(c\.id\)"/);
   assert.match(dialogSource, /:aria-pressed="selectedConnectionIds\.includes\(c\.id\)"/);
   assert.match(dialogSource, /t\("sqlFile\.selectedCount", \{ count: selectedConnectionIds\.length \}\)/);
-  assert.match(dialogSource, /v-for="target in batchTargets"/);
+  assert.match(dialogSource, /v-for="target in displayedBatchTargets"/);
   assert.match(dialogSource, /const batchDatabase = ref\(""\)/);
   assert.match(dialogSource, /batchDatabase\.value = database\.value\.trim\(\)/);
   assert.match(dialogSource, /@click="toggleTargetExpanded\(target\.executionId\)"/);
@@ -53,7 +53,7 @@ test("desktop SQL file execution renders ordered multi-target controls and batch
   assert.match(dialogSource, /function handleOpenChange\(nextOpen: boolean\)[\s\S]*decideSqlFileBatchDialogClose\(batchDialogSession\.value, isDesktop, batchRunning\.value\)/);
   assert.match(dialogSource, /<Dialog :open="open" @update:open="handleOpenChange">/);
   assert.match(dialogSource, /@click="handleOpenChange\(false\)"[\s\S]*t\("sqlFile\.runInBackground"\)/);
-  assert.match(dialogSource, /@click="stopBatch"[\s\S]*t\("sqlFile\.stopBatch"\)/);
+  assert.match(dialogSource, /<template v-if="isDesktop">[\s\S]*@click="stopBatch"[\s\S]*@click="startBatchExecution"/);
 });
 
 test("desktop targets are limited to the fixed baseline database type", () => {
@@ -66,11 +66,24 @@ test("desktop targets are limited to the fixed baseline database type", () => {
   assert.match(dialogSource, /loadDatabasesForConnection\(baselineConnectionId\.value\)/);
 });
 
-test("Web keeps the original single-target selector and execution path", () => {
-  assert.match(dialogSource, /<Select v-else v-model="connectionId" :disabled="running">/);
-  assert.match(dialogSource, /listenSqlFileProgressById/);
-  assert.match(dialogSource, /<template v-if="running">[\s\S]*@click="cancelExecution"/);
-  assert.match(dialogSource, /:disabled="!canStart" @click="startExecution"/);
+test("Web uses the shared server batch execution path", () => {
+  assert.match(dialogSource, /useWebSqlFileBatchExecution/);
+  assert.match(dialogSource, /createSqlFileBatch/);
+  assert.match(dialogSource, /listSqlFileBatches/);
+  assert.match(dialogSource, /listenSqlFileBatch/);
+  assert.match(dialogSource, /selectedConnectionIds/);
+  assert.match(dialogSource, /webBatch\.start/);
+  assert.match(dialogSource, /webBatch\.cancel/);
+  assert.match(dialogSource, /webBatch\.load/);
+  assert.match(dialogSource, /for \(const targetConnectionId of selectedConnectionIds\.value\)/);
+  assert.match(dialogSource, /await prepareBatchTarget\(targetConnectionId, database\.value\.trim\(\)\)/);
+  assert.match(dialogSource, /if \(!isDesktop\) webBatch\.disconnect\(\)/);
+  assert.match(dialogSource, /watch\(\s*open,\s*\(value\) => \{\s*if \(!value\) \{\s*if \(!isDesktop\) webBatch\.disconnect\(\)/);
+  assert.match(dialogSource, /webBatch\.batches\.value\.length > 1/);
+  assert.match(dialogSource, /target\.status === "success" \|\| target\.status === "partial"/);
+  assert.doesNotMatch(dialogSource, /listenSqlFileProgressById/);
+  assert.doesNotMatch(dialogSource, /async function startExecution\(/);
+  assert.doesNotMatch(dialogSource, /async function cancelExecution\(/);
 });
 
 test("desktop batch runtime delegates existing APIs and tracks target metadata", () => {
@@ -96,6 +109,10 @@ test("batch SQL file labels include the required English and Simplified Chinese 
   assert.match(englishSource, /failureDetails: "Statement failures"/);
   assert.match(englishSource, /runInBackground: "Run in Background"/);
   assert.match(englishSource, /stopBatch: "Stop Batch"/);
+  assert.match(englishSource, /sharedBatches: "Shared batches"/);
+  assert.match(englishSource, /selectBatch: "Select batch"/);
+  assert.match(englishSource, /cancelling: "Cancelling"/);
+  assert.match(englishSource, /completed: "Completed"/);
 
   assert.match(simplifiedChineseSource, /selectedCount: "已选择 \{count\} 个"/);
   assert.match(simplifiedChineseSource, /batchProgress: "已完成 \{completed\}\/\{total\} 个目标"/);
@@ -105,4 +122,8 @@ test("batch SQL file labels include the required English and Simplified Chinese 
   assert.match(simplifiedChineseSource, /failureDetails: "语句失败详情"/);
   assert.match(simplifiedChineseSource, /runInBackground: "后台运行"/);
   assert.match(simplifiedChineseSource, /stopBatch: "停止批量执行"/);
+  assert.match(simplifiedChineseSource, /sharedBatches: "共享批次"/);
+  assert.match(simplifiedChineseSource, /selectBatch: "选择批次"/);
+  assert.match(simplifiedChineseSource, /cancelling: "正在取消"/);
+  assert.match(simplifiedChineseSource, /completed: "已完成"/);
 });

@@ -3124,6 +3124,8 @@ export default withEnglishFallback({
     connection: "连接",
     selectConnection: "选择连接",
     selectedCount: "已选择 {count} 个",
+    sharedBatches: "共享批次",
+    selectBatch: "选择批次",
     database: "数据库",
     selectDatabase: "选择数据库",
     databasePlaceholder: "数据库名称",
@@ -3150,6 +3152,8 @@ export default withEnglishFallback({
     batchStatus: {
       pending: "等待执行",
       running: "执行中",
+      cancelling: "正在取消",
+      completed: "已完成",
       success: "成功",
       partial: "部分成功",
       failed: "失败",

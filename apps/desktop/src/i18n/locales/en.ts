@@ -3134,6 +3134,8 @@ export default {
     connection: "Connection",
     selectConnection: "Select connection",
     selectedCount: "{count} selected",
+    sharedBatches: "Shared batches",
+    selectBatch: "Select batch",
     database: "Database",
     selectDatabase: "Select database",
     databasePlaceholder: "Database name",
@@ -3160,6 +3162,8 @@ export default {
     batchStatus: {
       pending: "Pending",
       running: "Running",
+      cancelling: "Cancelling",
+      completed: "Completed",
       success: "Succeeded",
       partial: "Partially succeeded",
       failed: "Failed",

@@ -18,12 +18,16 @@ import { useProductionSafetyStore } from "@/stores/productionSafetyStore";
 import { productionContextForDatabase } from "@/lib/database/productionSafety";
 import { databaseOptionsForConnection } from "@/composables/useDatabaseOptions";
 import { requiresSqlFileTargetDatabaseSelection } from "@/lib/connection/connectionLevelDatabaseBootstrap";
-import { cancelSqlFileExecution, executeSqlFile, listenSqlFileProgress, listDatabases, previewSqlFile, type SqlFilePreview, type SqlFileProgress, type SqlFileStatus } from "@/lib/backend/api";
+import { cancelSqlFileExecution, executeSqlFile, listenSqlFileProgress, listDatabases, previewSqlFile, type SqlFilePreview } from "@/lib/backend/api";
+import { cancelSqlFileBatch, createSqlFileBatch, getSqlFileBatch, listSqlFileBatches } from "@/lib/backend/http";
 import { useExportTracker } from "@/composables/useExportTracker";
 import { useSqlFileBatchExecution } from "@/composables/useSqlFileBatchExecution";
+import { useWebSqlFileBatchExecution } from "@/composables/useWebSqlFileBatchExecution";
+import { listenSqlFileBatch } from "@/lib/sql/httpSqlFileBatch";
 import type { SqlFileBatchTargetState, SqlFileBatchTargetStatus } from "@/lib/sql/sqlFileBatchExecution";
+import type { WebSqlFileBatchSnapshot } from "@/lib/sql/webSqlFileBatch";
 import { decideSqlFileBatchDialogClose, decideSqlFileBatchDialogOpen, initialSqlFileBatchDialogSession } from "@/lib/sql/sqlFileBatchDialogSession";
-import { Check, CheckSquare, ChevronDown, ChevronRight, FileCode, FolderOpen, Loader2, Play, Square, X } from "@lucide/vue";
+import { CheckSquare, ChevronDown, ChevronRight, FileCode, FolderOpen, Loader2, Play, Square, X } from "@lucide/vue";
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -46,7 +50,6 @@ const filePath = ref("");
 const preview = ref<SqlFilePreview | null>(null);
 const selectingFile = ref(false);
 const loadingPreview = ref(false);
-const connectionId = ref("");
 const baselineConnectionId = ref("");
 const selectedConnectionIds = ref<string[]>([]);
 const expandedTargetIds = ref<string[]>([]);
@@ -57,19 +60,8 @@ const databaseOptions = ref<string[]>([]);
 const loadingDatabases = ref(false);
 const continueOnError = ref(false);
 
-const running = ref(false);
-const cancelling = ref(false);
-const cancelRequested = ref(false);
-const executionStarted = ref(false);
-const executionId = ref("");
-const progress = ref<SqlFileProgress | null>(null);
-const terminalStatus = ref<SqlFileStatus | "idle">("idle");
-const terminalError = ref("");
-const refreshedTarget = ref(false);
-
 const sqlConnections = computed(() => store.connections.filter((c) => !["redis", "mongodb", "elasticsearch", "qdrant", "milvus", "weaviate", "chromadb", "etcd", "zookeeper", "mq", "nacos"].includes(c.db_type)));
 
-const selectedConnection = computed(() => sqlConnections.value.find((c) => c.id === connectionId.value));
 const baselineConnection = computed(() => sqlConnections.value.find((connection) => connection.id === baselineConnectionId.value));
 const sameTypeSqlConnections = computed(() => {
   const baselineDbType = baselineConnection.value?.db_type;
@@ -117,40 +109,32 @@ const {
   refresh: (targetConnectionId, targetDatabase) => store.refreshDatabaseTreeNode(targetConnectionId, targetDatabase.trim()),
 });
 
-const executionActive = computed(() => (isDesktop ? batchRunning.value : running.value));
-const completedTargetCount = computed(() => batchTargets.value.filter((target) => target.status !== "pending" && target.status !== "running").length);
-const batchProgressPercent = computed(() => (batchTargets.value.length > 0 ? Math.round((completedTargetCount.value / batchTargets.value.length) * 100) : 0));
-const batchElapsedMs = computed(() => batchTargets.value.reduce((total, target) => total + target.elapsedMs, 0));
+const webBatch = useWebSqlFileBatchExecution({
+  create: createSqlFileBatch,
+  list: listSqlFileBatches,
+  get: getSqlFileBatch,
+  cancel: cancelSqlFileBatch,
+  listen: listenSqlFileBatch,
+});
+
+function emptySummary() {
+  return { success: 0, partial: 0, failed: 0, cancelled: 0, skipped: 0 };
+}
+
+const displayedBatchTargets = computed(() => (isDesktop ? batchTargets.value : (webBatch.currentBatch.value?.targets ?? [])));
+const displayedBatchSummary = computed(() => (isDesktop ? batchSummary.value : (webBatch.currentBatch.value?.summary ?? emptySummary())));
+const displayedBatchDatabase = computed(() => (isDesktop ? batchDatabase.value : (webBatch.currentBatch.value?.database ?? "")));
+const batchExecutionActive = computed(() => (isDesktop ? batchRunning.value : webBatch.currentBatch.value?.status === "running" || webBatch.currentBatch.value?.status === "cancelling"));
+const executionActive = computed(() => batchExecutionActive.value || (!isDesktop && webBatch.starting.value));
+const completedTargetCount = computed(() => displayedBatchTargets.value.filter((target) => target.status !== "pending" && target.status !== "running").length);
+const batchProgressPercent = computed(() => (displayedBatchTargets.value.length > 0 ? Math.round((completedTargetCount.value / displayedBatchTargets.value.length) * 100) : 0));
+const batchElapsedMs = computed(() => displayedBatchTargets.value.reduce((total, target) => total + target.elapsedMs, 0));
 
 const canStart = computed(() => {
-  const connection = isDesktop ? baselineConnection.value : selectedConnection.value;
+  const connection = baselineConnection.value;
   if (!preview.value || !connection || executionActive.value || loadingPreview.value || loadingDatabases.value) return false;
-  if (isDesktop && selectedConnectionIds.value.length === 0) return false;
+  if (selectedConnectionIds.value.length === 0) return false;
   return !!database.value.trim() || !requiresSqlFileTargetDatabaseSelection(connection, preview.value.canExecuteWithoutSelectedDatabase);
-});
-
-const statusTone = computed(() => {
-  if (terminalStatus.value === "done") return "text-green-600";
-  if (terminalStatus.value === "error") return "text-destructive";
-  if (terminalStatus.value === "cancelled") return "text-yellow-600";
-  if (running.value) return "text-primary";
-  return "text-muted-foreground";
-});
-
-const statusIcon = computed(() => {
-  if (running.value) return Loader2;
-  if (terminalStatus.value === "done") return Check;
-  if (terminalStatus.value === "error" || terminalStatus.value === "cancelled") return X;
-  return FileCode;
-});
-
-const progressPercent = computed(() => {
-  if (!progress.value) return 0;
-  if (terminalStatus.value === "done") return 100;
-  const attempted = progress.value.successCount + progress.value.failureCount;
-  const current = Math.max(progress.value.statementIndex, attempted);
-  if (current <= 0) return running.value ? 8 : 0;
-  return Math.min(95, Math.max(8, Math.round((attempted / current) * 100)));
 });
 const previewLineCount = computed(() => preview.value?.preview.split(/\r\n|\r|\n/).length ?? 0);
 const previewLineNumbers = computed(() => Array.from({ length: previewLineCount.value }, (_, index) => index + 1));
@@ -193,6 +177,14 @@ function batchStatusLabel(status: SqlFileBatchTargetStatus) {
   return t(`sqlFile.batchStatus.${status}`);
 }
 
+function sharedBatchStatusLabel(status: WebSqlFileBatchSnapshot["status"]) {
+  return t(`sqlFile.batchStatus.${status}`);
+}
+
+function formatBatchCreatedAt(createdAtMs: number) {
+  return new Date(createdAtMs).toLocaleString();
+}
+
 function batchStatusTone(status: SqlFileBatchTargetStatus) {
   if (status === "success") return "text-green-600";
   if (status === "partial") return "text-yellow-600";
@@ -211,20 +203,12 @@ function toggleTargetExpanded(executionId: string) {
 }
 
 function toggleTargetSelection(id: string) {
-  if (batchRunning.value) return;
+  if (batchExecutionActive.value) return;
   selectedConnectionIds.value = selectedConnectionIds.value.includes(id) ? selectedConnectionIds.value.filter((selectedId) => selectedId !== id) : [...selectedConnectionIds.value, id];
 }
 
 function targetHasDetails(target: SqlFileBatchTargetState) {
   return target.status !== "pending" || !!target.error || target.failures.length > 0;
-}
-
-function statusLabel(status: SqlFileStatus | "idle") {
-  return t(`sqlFile.status.${status}`);
-}
-
-function isTerminalStatus(status: SqlFileStatus | "idle") {
-  return status === "done" || status === "error" || status === "cancelled";
 }
 
 function resolveInitialConnectionId() {
@@ -244,25 +228,12 @@ function chooseDatabase(names: string[], id: string) {
   return props.prefillDatabase ?? configDatabase;
 }
 
-function resetExecution() {
-  running.value = false;
-  cancelling.value = false;
-  cancelRequested.value = false;
-  executionStarted.value = false;
-  executionId.value = "";
-  progress.value = null;
-  terminalStatus.value = "idle";
-  terminalError.value = "";
-  refreshedTarget.value = false;
-}
-
 function resetState() {
   filePath.value = "";
   preview.value = null;
   selectingFile.value = false;
   loadingPreview.value = false;
   const initialConnectionId = resolveInitialConnectionId();
-  connectionId.value = initialConnectionId;
   baselineConnectionId.value = initialConnectionId;
   selectedConnectionIds.value = initialConnectionId ? [initialConnectionId] : [];
   expandedTargetIds.value = [];
@@ -271,8 +242,7 @@ function resetState() {
   databaseOptions.value = [];
   loadingDatabases.value = false;
   continueOnError.value = false;
-  resetExecution();
-  resetBatch();
+  if (isDesktop) resetBatch();
 }
 
 let databaseLoadToken = 0;
@@ -325,8 +295,6 @@ async function loadPreview(fileOrPath: string | File) {
     if (isDesktop) {
       expandedTargetIds.value = [];
       resetBatch();
-    } else {
-      resetExecution();
     }
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
@@ -371,130 +339,6 @@ async function handleFileInputChange(event: Event) {
   }
 }
 
-async function listenProgress(id: string, handler: (next: SqlFileProgress) => void): Promise<() => void> {
-  if (isTauriRuntime()) {
-    return listenSqlFileProgress(handler);
-  }
-  const { listenSqlFileProgressById } = await import("@/lib/sql/httpSqlFileProgress");
-  return listenSqlFileProgressById(id, handler);
-}
-
-async function refreshTargetAfterImport() {
-  if (refreshedTarget.value) return;
-  refreshedTarget.value = true;
-  try {
-    await store.refreshDatabaseTreeNode(connectionId.value, database.value.trim());
-  } catch (e: any) {
-    toast(e?.message || String(e), 5000);
-  }
-}
-
-async function startExecution() {
-  if (!canStart.value || !preview.value) return;
-  const productionContext = productionContextForDatabase(selectedConnection.value, database.value);
-  if (productionContext.active) {
-    // File previews are truncated, so production file execution is always reviewed instead of inferring safety from a partial preview.
-    const confirmed = await productionSafetyStore.requestConfirmation({
-      sql: preview.value.preview,
-      connectionName: selectedConnection.value?.name,
-      database: database.value,
-      productionDatabases: productionContext.databases,
-      source: t("production.sourceSqlFile"),
-    });
-    if (!confirmed) return;
-  }
-
-  const id = uuid();
-  executionId.value = id;
-  running.value = true;
-  cancelling.value = false;
-  cancelRequested.value = false;
-  executionStarted.value = false;
-  terminalStatus.value = "running";
-  terminalError.value = "";
-  progress.value = null;
-  addSqlFileTask(id, preview.value.fileName, preview.value.filePath);
-
-  let unlisten: (() => void) | undefined;
-  try {
-    await store.ensureConnected(connectionId.value);
-    if (cancelRequested.value) {
-      terminalStatus.value = "cancelled";
-      return;
-    }
-
-    unlisten = await listenProgress(id, (next) => {
-      if (next.executionId !== id) return;
-      progress.value = next;
-      terminalStatus.value = next.status;
-      terminalError.value = next.error ?? terminalError.value;
-      updateSqlFileTask(id, next);
-      if (isTerminalStatus(next.status)) {
-        running.value = false;
-        cancelling.value = false;
-      }
-      if (next.status === "done") {
-        void refreshTargetAfterImport();
-      }
-    });
-
-    if (cancelRequested.value) {
-      terminalStatus.value = "cancelled";
-      return;
-    }
-
-    executionStarted.value = true;
-    await executeSqlFile({
-      executionId: id,
-      connectionId: connectionId.value,
-      database: database.value.trim(),
-      filePath: preview.value.filePath,
-      continueOnError: continueOnError.value,
-    });
-    if (!isTerminalStatus(terminalStatus.value)) {
-      terminalStatus.value = cancelRequested.value ? "cancelled" : "done";
-      const lastProgress = progress.value as SqlFileProgress | null;
-      updateSqlFileTask(id, {
-        executionId: id,
-        status: terminalStatus.value,
-        statementIndex: lastProgress?.statementIndex ?? 0,
-        successCount: lastProgress?.successCount ?? 0,
-        failureCount: lastProgress?.failureCount ?? 0,
-        affectedRows: lastProgress?.affectedRows ?? 0,
-        elapsedMs: lastProgress?.elapsedMs ?? 0,
-        statementSummary: lastProgress?.statementSummary ?? "",
-        error: lastProgress?.error ?? null,
-      });
-      if (terminalStatus.value === "done") {
-        await refreshTargetAfterImport();
-      }
-    }
-  } catch (e: any) {
-    terminalStatus.value = cancelRequested.value ? "cancelled" : "error";
-    terminalError.value = e?.message || String(e);
-    const lastProgress = progress.value as SqlFileProgress | null;
-    updateSqlFileTask(id, {
-      executionId: id,
-      status: terminalStatus.value,
-      statementIndex: lastProgress?.statementIndex ?? 0,
-      successCount: lastProgress?.successCount ?? 0,
-      failureCount: lastProgress?.failureCount ?? 0,
-      affectedRows: lastProgress?.affectedRows ?? 0,
-      elapsedMs: lastProgress?.elapsedMs ?? 0,
-      statementSummary: lastProgress?.statementSummary ?? "",
-      error: terminalError.value,
-    });
-    if (!cancelRequested.value) {
-      toast(terminalError.value, 5000);
-    }
-  } finally {
-    unlisten?.();
-    running.value = false;
-    cancelling.value = false;
-    executionStarted.value = false;
-  }
-}
-
 async function startBatchExecution() {
   if (!isDesktop || !canStart.value || !preview.value) return;
   expandedTargetIds.value = [];
@@ -508,75 +352,98 @@ async function startBatchExecution() {
   });
 }
 
+async function startWebBatchExecution() {
+  if (isDesktop || !canStart.value || !preview.value) return;
+
+  try {
+    for (const targetConnectionId of selectedConnectionIds.value) {
+      if ((await prepareBatchTarget(targetConnectionId, database.value.trim())) === "declined") return;
+    }
+
+    expandedTargetIds.value = [];
+    await webBatch.start({
+      connectionIds: [...selectedConnectionIds.value],
+      database: database.value.trim(),
+      filePath: preview.value.filePath,
+      continueOnError: continueOnError.value,
+    });
+  } catch (e: any) {
+    toast(e?.message || String(e), 5000);
+  }
+}
+
 async function stopBatch() {
   await stopBatchController();
 }
 
-async function cancelExecution() {
-  if (!executionId.value || !running.value || cancelling.value) return;
-  cancelRequested.value = true;
-  cancelling.value = true;
-  if (!executionStarted.value) return;
+async function stopWebBatch() {
   try {
-    const cancelled = await cancelSqlFileExecution(executionId.value);
-    if (!cancelled) {
-      throw new Error("Cancel request was not accepted");
-    }
+    await webBatch.cancel();
   } catch (e: any) {
-    cancelRequested.value = false;
-    cancelling.value = false;
     toast(e?.message || String(e), 5000);
   }
+}
+
+function selectWebBatch(batchId: string) {
+  expandedTargetIds.value = [];
+  webBatch.select(batchId);
 }
 
 function handleOpenChange(nextOpen: boolean) {
   if (!nextOpen) {
     batchDialogSession.value = decideSqlFileBatchDialogClose(batchDialogSession.value, isDesktop, batchRunning.value);
+    if (!isDesktop) webBatch.disconnect();
   }
   open.value = nextOpen;
 }
 
-watch(connectionId, (id) => {
-  if (!isDesktop) loadDatabasesForConnection(id);
-});
-
 watch(baselineConnectionId, (id) => {
-  if (isDesktop) loadDatabasesForConnection(id);
+  loadDatabasesForConnection(id);
 });
 
 watch(sqlConnections, () => {
   if (!open.value || executionActive.value) return;
-  if (isDesktop) {
-    if (baselineConnection.value) {
-      const eligibleIds = new Set(sameTypeSqlConnections.value.map((connection) => connection.id));
-      selectedConnectionIds.value = selectedConnectionIds.value.filter((id) => eligibleIds.has(id));
-      return;
-    }
-    const initialConnectionId = resolveInitialConnectionId();
-    baselineConnectionId.value = initialConnectionId;
-    selectedConnectionIds.value = initialConnectionId ? [initialConnectionId] : [];
+  if (baselineConnection.value) {
+    const eligibleIds = new Set(sameTypeSqlConnections.value.map((connection) => connection.id));
+    selectedConnectionIds.value = selectedConnectionIds.value.filter((id) => eligibleIds.has(id));
     return;
   }
-  if (!selectedConnection.value) connectionId.value = resolveInitialConnectionId();
+  const initialConnectionId = resolveInitialConnectionId();
+  baselineConnectionId.value = initialConnectionId;
+  selectedConnectionIds.value = initialConnectionId ? [initialConnectionId] : [];
 });
+
+watch(
+  () => webBatch.currentBatch.value,
+  (snapshot, previousSnapshot) => {
+    if (isDesktop || !snapshot || snapshot.batchId !== previousSnapshot?.batchId) return;
+    const previousStatuses = new Map(previousSnapshot.targets.map((target) => [target.executionId, target.status]));
+    for (const target of snapshot.targets) {
+      const previousStatus = previousStatuses.get(target.executionId);
+      if ((target.status === "success" || target.status === "partial") && previousStatus !== "success" && previousStatus !== "partial") {
+        void store.refreshDatabaseTreeNode(target.connectionId, snapshot.database.trim()).catch((e: any) => toast(e?.message || String(e), 5000));
+      }
+    }
+  },
+);
 
 watch(
   open,
   (value) => {
-    if (!value) return;
+    if (!value) {
+      if (!isDesktop) webBatch.disconnect();
+      return;
+    }
     if (isDesktop) {
       const decision = decideSqlFileBatchDialogOpen(batchDialogSession.value, batchRunning.value);
       batchDialogSession.value = decision.session;
       if (!decision.reset) return;
-    } else if (running.value) {
-      return;
     }
     resetState();
-    if (isDesktop && baselineConnectionId.value) {
+    if (baselineConnectionId.value) {
       loadDatabasesForConnection(baselineConnectionId.value);
-    } else if (connectionId.value) {
-      loadDatabasesForConnection(connectionId.value);
     }
+    if (!isDesktop) void webBatch.load().catch((e: any) => toast(e?.message || String(e), 5000));
     // When opened from the SQL Files panel with a pre-selected file, load its
     // preview automatically so the user can review statements before running.
     if (props.prefillFilePath) {
@@ -643,9 +510,9 @@ watch(
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
               <Label class="text-xs">{{ t("sqlFile.connection") }}</Label>
-              <Popover v-if="isDesktop">
+              <Popover>
                 <PopoverTrigger as-child>
-                  <Button variant="outline" class="h-8 w-full justify-between px-3 text-xs font-normal" :disabled="batchRunning">
+                  <Button variant="outline" class="h-8 w-full justify-between px-3 text-xs font-normal" :disabled="batchExecutionActive">
                     <span v-if="selectedConnectionIds.length" class="min-w-0 truncate">
                       {{ t("sqlFile.selectedCount", { count: selectedConnectionIds.length }) }}
                     </span>
@@ -663,24 +530,6 @@ watch(
                   </button>
                 </PopoverContent>
               </Popover>
-              <Select v-else v-model="connectionId" :disabled="running">
-                <SelectTrigger class="h-8 text-xs">
-                  <div v-if="connectionId" class="flex items-center gap-1.5 min-w-0">
-                    <DatabaseIcon :db-type="connectionIconType(connectionId)" class="w-3.5 h-3.5 shrink-0" />
-                    <span class="truncate">{{ selectedConnection?.name ?? connectionId }}</span>
-                  </div>
-                  <SelectValue v-else :placeholder="t('sqlFile.selectConnection')" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem v-for="c in sqlConnections" :key="c.id" :value="c.id">
-                    <div class="flex min-w-0 items-center gap-1.5">
-                      <DatabaseIcon :db-type="c.driver_profile || c.db_type" class="w-3.5 h-3.5 shrink-0" />
-                      <ConnectionGroupBadge :connection-id="c.id" />
-                      <span class="min-w-0 flex-1 truncate">{{ c.name }}</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <div class="space-y-1.5">
@@ -713,10 +562,22 @@ watch(
           </button>
         </div>
 
-        <div v-if="isDesktop && batchTargets.length" class="min-w-0 space-y-3">
+        <div v-if="!isDesktop && webBatch.batches.value.length > 1" class="grid min-w-0 gap-1.5">
+          <Label class="text-xs">{{ t("sqlFile.sharedBatches") }}</Label>
+          <Select :model-value="webBatch.selectedBatchId.value" :disabled="webBatch.loading.value" @update:model-value="selectWebBatch">
+            <SelectTrigger class="h-8 text-xs">
+              <SelectValue :placeholder="t('sqlFile.selectBatch')" />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectItem v-for="batch in webBatch.batches.value" :key="batch.batchId" :value="batch.batchId"> {{ batch.fileName }} · {{ formatBatchCreatedAt(batch.createdAtMs) }} · {{ sharedBatchStatusLabel(batch.status) }} </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div v-if="displayedBatchTargets.length" class="min-w-0 space-y-3">
           <div class="flex items-center justify-between gap-3 text-xs">
             <div class="min-w-0 font-medium">
-              {{ t("sqlFile.batchProgress", { completed: completedTargetCount, total: batchTargets.length }) }}
+              {{ t("sqlFile.batchProgress", { completed: completedTargetCount, total: displayedBatchTargets.length }) }}
             </div>
             <span class="shrink-0 text-muted-foreground">{{ formatElapsed(batchElapsedMs) }}</span>
           </div>
@@ -726,21 +587,21 @@ watch(
           </div>
 
           <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span>{{ t("sqlFile.batchStatus.success") }}: {{ batchSummary.success }}</span>
-            <span>{{ t("sqlFile.batchStatus.partial") }}: {{ batchSummary.partial }}</span>
-            <span>{{ t("sqlFile.batchStatus.failed") }}: {{ batchSummary.failed }}</span>
-            <span>{{ t("sqlFile.batchStatus.cancelled") }}: {{ batchSummary.cancelled }}</span>
-            <span>{{ t("sqlFile.batchStatus.skipped") }}: {{ batchSummary.skipped }}</span>
+            <span>{{ t("sqlFile.batchStatus.success") }}: {{ displayedBatchSummary.success }}</span>
+            <span>{{ t("sqlFile.batchStatus.partial") }}: {{ displayedBatchSummary.partial }}</span>
+            <span>{{ t("sqlFile.batchStatus.failed") }}: {{ displayedBatchSummary.failed }}</span>
+            <span>{{ t("sqlFile.batchStatus.cancelled") }}: {{ displayedBatchSummary.cancelled }}</span>
+            <span>{{ t("sqlFile.batchStatus.skipped") }}: {{ displayedBatchSummary.skipped }}</span>
           </div>
 
           <div class="space-y-2">
-            <div v-for="target in batchTargets" :key="target.executionId" class="overflow-hidden rounded-md border">
+            <div v-for="target in displayedBatchTargets" :key="target.executionId" class="overflow-hidden rounded-md border">
               <button type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted/40" :aria-expanded="isTargetExpanded(target.executionId)" :aria-controls="`sql-file-target-details-${target.executionId}`" @click="toggleTargetExpanded(target.executionId)">
                 <ChevronDown v-if="isTargetExpanded(target.executionId)" class="h-3.5 w-3.5 shrink-0" />
                 <ChevronRight v-else class="h-3.5 w-3.5 shrink-0" :class="{ 'text-muted-foreground/50': !targetHasDetails(target) }" />
                 <DatabaseIcon :db-type="connectionIconType(target.connectionId)" class="h-3.5 w-3.5 shrink-0" />
                 <span class="min-w-0 flex-1 truncate font-medium">{{ connectionName(target.connectionId) }}</span>
-                <span class="hidden max-w-40 truncate text-muted-foreground sm:inline">{{ batchDatabase || t("sqlFile.noDatabase") }}</span>
+                <span class="hidden max-w-40 truncate text-muted-foreground sm:inline">{{ displayedBatchDatabase || t("sqlFile.noDatabase") }}</span>
                 <span class="shrink-0 font-medium" :class="batchStatusTone(target.status)">
                   {{ batchStatusLabel(target.status) }}
                 </span>
@@ -763,7 +624,7 @@ watch(
                   </div>
                   <div>
                     <div class="text-muted-foreground">{{ t("sqlFile.database") }}</div>
-                    <div class="truncate font-medium">{{ batchDatabase || t("sqlFile.noDatabase") }}</div>
+                    <div class="truncate font-medium">{{ displayedBatchDatabase || t("sqlFile.noDatabase") }}</div>
                   </div>
                 </div>
 
@@ -793,60 +654,6 @@ watch(
             </div>
           </div>
         </div>
-
-        <div v-if="!isDesktop && (running || terminalStatus !== 'idle' || progress)" class="min-w-0 space-y-3">
-          <div class="flex items-center justify-between gap-3 text-xs">
-            <div class="flex items-center gap-1.5 min-w-0" :class="statusTone">
-              <component :is="statusIcon" class="w-3.5 h-3.5 shrink-0" :class="{ 'animate-spin': running }" />
-              <span class="font-medium truncate">
-                {{ cancelling ? t("sqlFile.cancelling") : statusLabel(terminalStatus) }}
-              </span>
-            </div>
-            <span v-if="progress" class="text-muted-foreground shrink-0">
-              {{ formatElapsed(progress.elapsedMs) }}
-            </span>
-          </div>
-
-          <div class="w-full bg-muted rounded-full h-2 overflow-hidden">
-            <div class="h-full rounded-full transition-[width] duration-300" :class="terminalStatus === 'error' ? 'bg-destructive' : terminalStatus === 'cancelled' ? 'bg-yellow-500' : 'bg-primary'" :style="{ width: `${progressPercent}%` }" />
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div class="border rounded-md px-2 py-1.5 min-w-0">
-              <div class="text-muted-foreground truncate">{{ t("sqlFile.statement") }}</div>
-              <div class="font-medium truncate">{{ progress?.statementIndex ?? 0 }}</div>
-            </div>
-            <div class="border rounded-md px-2 py-1.5 min-w-0">
-              <div class="text-muted-foreground truncate">{{ t("sqlFile.succeeded") }}</div>
-              <div class="font-medium text-green-600 truncate">
-                {{ progress?.successCount ?? 0 }}
-              </div>
-            </div>
-            <div class="border rounded-md px-2 py-1.5 min-w-0">
-              <div class="text-muted-foreground truncate">{{ t("sqlFile.failed") }}</div>
-              <div class="font-medium text-destructive truncate">
-                {{ progress?.failureCount ?? 0 }}
-              </div>
-            </div>
-            <div class="border rounded-md px-2 py-1.5 min-w-0">
-              <div class="text-muted-foreground truncate">{{ t("sqlFile.affectedRows") }}</div>
-              <div class="font-medium truncate">
-                {{ (progress?.affectedRows ?? 0).toLocaleString() }}
-              </div>
-            </div>
-          </div>
-
-          <div v-if="progress?.statementSummary" class="space-y-1">
-            <Label class="text-xs">{{ t("sqlFile.currentStatement") }}</Label>
-            <div class="max-h-20 max-w-full overflow-auto rounded-md border bg-muted/15 p-2 text-xs font-mono whitespace-pre">
-              {{ progress.statementSummary }}
-            </div>
-          </div>
-
-          <div v-if="progress?.error || terminalError" class="max-w-full overflow-auto rounded-md border bg-destructive/5 p-2 text-xs text-destructive whitespace-pre-wrap">
-            {{ progress?.error || terminalError }}
-          </div>
-        </div>
       </div>
 
       <DialogFooter class="shrink-0">
@@ -872,22 +679,22 @@ watch(
           </template>
         </template>
         <template v-else>
-          <template v-if="running">
-            <Button variant="outline" size="sm" @click="open = false">
+          <template v-if="batchExecutionActive">
+            <Button variant="outline" size="sm" @click="handleOpenChange(false)">
               {{ t("sqlFile.runInBackground") }}
             </Button>
-            <Button variant="destructive" size="sm" :disabled="cancelling" @click="cancelExecution">
-              <Loader2 v-if="cancelling" class="w-3.5 h-3.5 mr-1.5 animate-spin" />
-              <X v-else class="w-3.5 h-3.5 mr-1.5" />
-              {{ cancelling ? t("sqlFile.cancelling") : t("sqlFile.cancel") }}
+            <Button variant="destructive" size="sm" :disabled="webBatch.cancelling.value" @click="stopWebBatch">
+              <Loader2 v-if="webBatch.cancelling.value" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              <X v-else class="mr-1.5 h-3.5 w-3.5" />
+              {{ t("sqlFile.stopBatch") }}
             </Button>
           </template>
           <template v-else>
-            <Button variant="outline" size="sm" @click="open = false">
+            <Button variant="outline" size="sm" @click="handleOpenChange(false)">
               {{ t("common.close") }}
             </Button>
-            <Button size="sm" :disabled="!canStart" @click="startExecution">
-              <Play class="w-3.5 h-3.5 mr-1.5" />
+            <Button size="sm" :disabled="!canStart" @click="startWebBatchExecution">
+              <Play class="mr-1.5 h-3.5 w-3.5" />
               {{ t("sqlFile.execute") }}
             </Button>
           </template>
