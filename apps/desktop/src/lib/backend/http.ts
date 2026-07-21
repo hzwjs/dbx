@@ -157,6 +157,7 @@ import type {
 } from "@/types/nacos";
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import { normalizeConnectionTestResult } from "@/lib/connection/connectionDatabaseInfo";
+import type { CreateWebSqlFileBatchRequest, WebSqlFileBatchSnapshot } from "@/lib/sql/webSqlFileBatch";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1422,6 +1423,23 @@ export async function executeSqlFile(request: SqlFileRequest): Promise<void> {
 
 export async function cancelSqlFileExecution(executionId: string): Promise<boolean> {
   return post("/api/sql-file/cancel", { executionId });
+}
+
+export async function createSqlFileBatch(request: CreateWebSqlFileBatchRequest): Promise<WebSqlFileBatchSnapshot> {
+  return post("/api/sql-file/batches", request);
+}
+
+export async function listSqlFileBatches(): Promise<WebSqlFileBatchSnapshot[]> {
+  return get("/api/sql-file/batches");
+}
+
+export async function getSqlFileBatch(batchId: string): Promise<WebSqlFileBatchSnapshot> {
+  return get(`/api/sql-file/batches/${encodeURIComponent(batchId)}`);
+}
+
+export async function cancelSqlFileBatch(batchId: string): Promise<boolean> {
+  const response = await post<{ cancelled: boolean }>(`/api/sql-file/batches/${encodeURIComponent(batchId)}/cancel`, {});
+  return response.cancelled;
 }
 
 export async function listenSqlFileProgress(_handler: (progress: SqlFileProgress) => void): Promise<() => void> {

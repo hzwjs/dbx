@@ -1,0 +1,81 @@
+import { computed, ref } from "vue";
+import { preferredWebSqlFileBatch, type CreateWebSqlFileBatchRequest, type WebSqlFileBatchSnapshot } from "@/lib/sql/webSqlFileBatch";
+
+export interface WebSqlFileBatchRuntime {
+  create(request: CreateWebSqlFileBatchRequest): Promise<WebSqlFileBatchSnapshot>;
+  list(): Promise<WebSqlFileBatchSnapshot[]>;
+  get(batchId: string): Promise<WebSqlFileBatchSnapshot>;
+  cancel(batchId: string): Promise<boolean>;
+  listen(batchId: string, handler: (snapshot: WebSqlFileBatchSnapshot) => void): () => void;
+}
+
+export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
+  const batches = ref<WebSqlFileBatchSnapshot[]>([]);
+  const selectedBatchId = ref<string>();
+  const currentBatch = computed(() => batches.value.find((snapshot) => snapshot.batchId === selectedBatchId.value));
+  const loading = ref(false);
+  const starting = ref(false);
+  const cancelling = ref(false);
+  let unlisten: (() => void) | undefined;
+
+  function replaceSnapshot(snapshot: WebSqlFileBatchSnapshot) {
+    const existing = batches.value.some((item) => item.batchId === snapshot.batchId);
+    batches.value = existing ? batches.value.map((item) => (item.batchId === snapshot.batchId ? snapshot : item)) : [snapshot, ...batches.value];
+  }
+
+  function disconnect() {
+    unlisten?.();
+    unlisten = undefined;
+  }
+
+  function subscribe(batchId: string) {
+    disconnect();
+    unlisten = runtime.listen(batchId, (snapshot) => {
+      if (selectedBatchId.value !== batchId) return;
+      replaceSnapshot(snapshot);
+    });
+  }
+
+  function select(batchId: string | undefined) {
+    selectedBatchId.value = batchId;
+    if (batchId) subscribe(batchId);
+    else disconnect();
+  }
+
+  async function load() {
+    loading.value = true;
+    try {
+      batches.value = await runtime.list();
+      const selected = selectedBatchId.value && batches.value.find((snapshot) => snapshot.batchId === selectedBatchId.value);
+      select(selected?.batchId ?? preferredWebSqlFileBatch(batches.value)?.batchId);
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function start(request: CreateWebSqlFileBatchRequest) {
+    starting.value = true;
+    try {
+      const snapshot = await runtime.create(request);
+      batches.value = [snapshot, ...batches.value.filter((item) => item.batchId !== snapshot.batchId)];
+      select(snapshot.batchId);
+    } finally {
+      starting.value = false;
+    }
+  }
+
+  async function cancel() {
+    const batchId = selectedBatchId.value;
+    if (!batchId || cancelling.value) return;
+
+    cancelling.value = true;
+    try {
+      await runtime.cancel(batchId);
+      replaceSnapshot(await runtime.get(batchId));
+    } finally {
+      cancelling.value = false;
+    }
+  }
+
+  return { batches, selectedBatchId, currentBatch, loading, starting, cancelling, load, select, start, cancel, disconnect };
+}
