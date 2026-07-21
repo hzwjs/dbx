@@ -38,6 +38,7 @@ function snapshot(batchId: string, status: WebSqlFileBatchSnapshot["status"], up
 
 class FakeRuntime implements WebSqlFileBatchRuntime {
   listed: WebSqlFileBatchSnapshot[] = [];
+  listQueue: Promise<WebSqlFileBatchSnapshot[]>[] = [];
   created = snapshot("created", "running", 10);
   fetched = new Map<string, WebSqlFileBatchSnapshot>();
   createdRequests: CreateWebSqlFileBatchRequest[] = [];
@@ -51,7 +52,7 @@ class FakeRuntime implements WebSqlFileBatchRuntime {
   }
 
   async list() {
-    return this.listed;
+    return this.listQueue.shift() ?? this.listed;
   }
 
   async get(batchId: string) {
@@ -73,6 +74,17 @@ class FakeRuntime implements WebSqlFileBatchRuntime {
 
   emit(next: WebSqlFileBatchSnapshot) {
     this.handlers.get(next.batchId)?.(next);
+  }
+}
+
+class Deferred<T> {
+  resolve!: (value: T) => void;
+  promise: Promise<T>;
+
+  constructor() {
+    this.promise = new Promise<T>((resolve) => {
+      this.resolve = resolve;
+    });
   }
 }
 
@@ -148,4 +160,41 @@ test("cancel delegates once and reloads the authoritative snapshot", async () =>
 
   assert.deepEqual(runtime.cancelled, ["running"]);
   assert.deepEqual(batch.currentBatch.value, refreshed);
+});
+
+test("a load that started before start cannot replace the created batch", async () => {
+  const runtime = new FakeRuntime();
+  const staleLoad = new Deferred<WebSqlFileBatchSnapshot[]>();
+  runtime.listQueue.push(staleLoad.promise);
+  const batch = useWebSqlFileBatchExecution(runtime);
+
+  const loading = batch.load();
+  await batch.start(request);
+  staleLoad.resolve([snapshot("old", "running", 1)]);
+  await loading;
+
+  assert.equal(batch.selectedBatchId.value, "created");
+  assert.equal(batch.currentBatch.value?.batchId, "created");
+  assert.equal(runtime.closes, 0);
+  assert.equal(batch.loading.value, false);
+});
+
+test("an older load cannot replace the state from a newer completed load", async () => {
+  const runtime = new FakeRuntime();
+  const older = new Deferred<WebSqlFileBatchSnapshot[]>();
+  const newer = new Deferred<WebSqlFileBatchSnapshot[]>();
+  runtime.listQueue.push(older.promise, newer.promise);
+  const batch = useWebSqlFileBatchExecution(runtime);
+
+  const firstLoad = batch.load();
+  const secondLoad = batch.load();
+  newer.resolve([snapshot("newest", "running", 20)]);
+  await secondLoad;
+  assert.equal(batch.loading.value, true);
+  older.resolve([snapshot("oldest", "running", 10)]);
+  await firstLoad;
+
+  assert.equal(batch.selectedBatchId.value, "newest");
+  assert.equal(batch.currentBatch.value?.batchId, "newest");
+  assert.equal(batch.loading.value, false);
 });

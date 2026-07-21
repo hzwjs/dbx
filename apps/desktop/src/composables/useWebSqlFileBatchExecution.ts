@@ -17,6 +17,8 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
   const starting = ref(false);
   const cancelling = ref(false);
   let unlisten: (() => void) | undefined;
+  let loadGeneration = 0;
+  let pendingLoads = 0;
 
   function replaceSnapshot(snapshot: WebSqlFileBatchSnapshot) {
     const existing = batches.value.some((item) => item.batchId === snapshot.batchId);
@@ -43,20 +45,28 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
   }
 
   async function load() {
+    const generation = ++loadGeneration;
+    pendingLoads += 1;
     loading.value = true;
     try {
-      batches.value = await runtime.list();
+      const snapshots = await runtime.list();
+      if (generation !== loadGeneration) return;
+
+      batches.value = snapshots;
       const selected = selectedBatchId.value && batches.value.find((snapshot) => snapshot.batchId === selectedBatchId.value);
       select(selected?.batchId ?? preferredWebSqlFileBatch(batches.value)?.batchId);
     } finally {
-      loading.value = false;
+      pendingLoads -= 1;
+      loading.value = pendingLoads > 0;
     }
   }
 
   async function start(request: CreateWebSqlFileBatchRequest) {
     starting.value = true;
+    loadGeneration += 1;
     try {
       const snapshot = await runtime.create(request);
+      loadGeneration += 1;
       batches.value = [snapshot, ...batches.value.filter((item) => item.batchId !== snapshot.batchId)];
       select(snapshot.batchId);
     } finally {
