@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, inject, ref, watch } from "vue";
 import { uuid } from "@/lib/common/utils";
 import { useI18n } from "vue-i18n";
 import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
@@ -22,7 +22,7 @@ import { cancelSqlFileExecution, executeSqlFile, listenSqlFileProgress, listData
 import { cancelSqlFileBatch, createSqlFileBatch, getSqlFileBatch, listSqlFileBatches } from "@/lib/backend/http";
 import { useExportTracker } from "@/composables/useExportTracker";
 import { useSqlFileBatchExecution } from "@/composables/useSqlFileBatchExecution";
-import { useWebSqlFileBatchExecution } from "@/composables/useWebSqlFileBatchExecution";
+import { useWebSqlFileBatchExecution, type WebSqlFileBatchRuntime } from "@/composables/useWebSqlFileBatchExecution";
 import { listenSqlFileBatch } from "@/lib/sql/httpSqlFileBatch";
 import type { SqlFileBatchTargetState, SqlFileBatchTargetStatus } from "@/lib/sql/sqlFileBatchExecution";
 import type { WebSqlFileBatchSnapshot } from "@/lib/sql/webSqlFileBatch";
@@ -111,13 +111,16 @@ const {
   refresh: (targetConnectionId, targetDatabase) => store.refreshDatabaseTreeNode(targetConnectionId, targetDatabase.trim()),
 });
 
-const webBatch = useWebSqlFileBatchExecution({
-  create: createSqlFileBatch,
-  list: listSqlFileBatches,
-  get: getSqlFileBatch,
-  cancel: cancelSqlFileBatch,
-  listen: listenSqlFileBatch,
-});
+const injectedWebBatchRuntime = inject<WebSqlFileBatchRuntime | null>("sqlFileWebBatchRuntime", null);
+const webBatch = useWebSqlFileBatchExecution(
+  injectedWebBatchRuntime ?? {
+    create: createSqlFileBatch,
+    list: listSqlFileBatches,
+    get: getSqlFileBatch,
+    cancel: cancelSqlFileBatch,
+    listen: listenSqlFileBatch,
+  },
+);
 
 function emptySummary() {
   return { success: 0, partial: 0, failed: 0, cancelled: 0, skipped: 0 };
