@@ -53,7 +53,7 @@ export function useWebSqlFileBatchExecution(runtime: WebSqlFileBatchRuntime) {
       if (generation !== loadGeneration) return;
 
       batches.value = snapshots;
-      const selected = selectedBatchId.value && batches.value.find((snapshot) => snapshot.batchId === selectedBatchId.value);
+      const selected = selectedBatchId.value ? batches.value.find((snapshot) => snapshot.batchId === selectedBatchId.value) : undefined;
       select(selected?.batchId ?? preferredWebSqlFileBatch(batches.value)?.batchId);
     } finally {
       pendingLoads -= 1;
