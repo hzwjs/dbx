@@ -45,9 +45,11 @@ test("desktop SQL file execution renders ordered multi-target controls and batch
   assert.match(dialogSource, /batchDatabase\.value = database\.value\.trim\(\)/);
   assert.match(dialogSource, /@click="toggleTargetExpanded\(target\.executionId\)"/);
   assert.match(dialogSource, /target\.failures/);
-  assert.match(dialogSource, /markSqlFileBatchBackgroundRestore/);
+  assert.match(dialogSource, /decideSqlFileBatchDialogClose/);
   assert.match(dialogSource, /decideSqlFileBatchDialogOpen/);
-  assert.match(dialogSource, /@click="runBatchInBackground"[\s\S]*t\("sqlFile\.runInBackground"\)/);
+  assert.match(dialogSource, /function handleOpenChange\(nextOpen: boolean\)[\s\S]*decideSqlFileBatchDialogClose\(batchDialogSession\.value, isDesktop, batchRunning\.value\)/);
+  assert.match(dialogSource, /<Dialog :open="open" @update:open="handleOpenChange">/);
+  assert.match(dialogSource, /@click="handleOpenChange\(false\)"[\s\S]*t\("sqlFile\.runInBackground"\)/);
   assert.match(dialogSource, /@click="stopBatch"[\s\S]*t\("sqlFile\.stopBatch"\)/);
 });
 

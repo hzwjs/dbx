@@ -334,6 +334,46 @@ test("cancels the active target and skips pending targets", async () => {
   );
 });
 
+test("stopping while listener setup is pending terminalizes its tracker and skips every target", async () => {
+  const runtime = new FakeRuntime();
+  const listener = new Deferred<() => void>();
+  runtime.listenFor.set("a-1", () => listener.promise);
+  const batch = useSqlFileBatchExecution(runtime);
+
+  const started = batch.start(request);
+  await waitForAction(runtime.actions, "listen a-1");
+  await batch.stop();
+  listener.resolve(() => {
+    runtime.unlistenCount += 1;
+  });
+  await started;
+
+  assert.equal(runtime.actions.includes("execute a"), false);
+  assert.equal(runtime.actions.includes("prepare b"), false);
+  assert.deepEqual(
+    batch.targets.value.map((target) => target.status),
+    ["skipped", "skipped"],
+  );
+  assert.deepEqual(runtime.cancelledIds, []);
+  assert.equal(runtime.unlistenCount, 1);
+  assert.deepEqual(runtime.taskUpdates, [
+    {
+      executionId: "a-1",
+      progress: {
+        executionId: "a-1",
+        status: "cancelled",
+        statementIndex: 0,
+        successCount: 0,
+        failureCount: 0,
+        affectedRows: 0,
+        elapsedMs: 0,
+        statementSummary: "",
+        error: null,
+      },
+    },
+  ]);
+});
+
 test("keeps the queue stopped when cancellation is declined", async () => {
   const runtime = new FakeRuntime();
   const execution = new Deferred<void>();

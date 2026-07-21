@@ -15,6 +15,10 @@ export function markSqlFileBatchBackgroundRestore(session: SqlFileBatchDialogSes
   return { ...session, restoreOnNextOpen: true };
 }
 
+export function decideSqlFileBatchDialogClose(session: SqlFileBatchDialogSession, isDesktop: boolean, batchActive: boolean): SqlFileBatchDialogSession {
+  return isDesktop && batchActive ? markSqlFileBatchBackgroundRestore(session) : session;
+}
+
 export function decideSqlFileBatchDialogOpen(session: SqlFileBatchDialogSession, batchActive: boolean): SqlFileBatchDialogOpenDecision {
   if (session.restoreOnNextOpen) {
     return { session: { ...session, restoreOnNextOpen: false }, reset: false };

@@ -22,7 +22,7 @@ import { cancelSqlFileExecution, executeSqlFile, listenSqlFileProgress, listData
 import { useExportTracker } from "@/composables/useExportTracker";
 import { useSqlFileBatchExecution } from "@/composables/useSqlFileBatchExecution";
 import type { SqlFileBatchTargetState, SqlFileBatchTargetStatus } from "@/lib/sql/sqlFileBatchExecution";
-import { decideSqlFileBatchDialogOpen, initialSqlFileBatchDialogSession, markSqlFileBatchBackgroundRestore } from "@/lib/sql/sqlFileBatchDialogSession";
+import { decideSqlFileBatchDialogClose, decideSqlFileBatchDialogOpen, initialSqlFileBatchDialogSession } from "@/lib/sql/sqlFileBatchDialogSession";
 import { Check, CheckSquare, ChevronDown, ChevronRight, FileCode, FolderOpen, Loader2, Play, Square, X } from "@lucide/vue";
 
 const { t } = useI18n();
@@ -512,11 +512,6 @@ async function stopBatch() {
   await stopBatchController();
 }
 
-function runBatchInBackground() {
-  batchDialogSession.value = markSqlFileBatchBackgroundRestore(batchDialogSession.value);
-  open.value = false;
-}
-
 async function cancelExecution() {
   if (!executionId.value || !running.value || cancelling.value) return;
   cancelRequested.value = true;
@@ -535,6 +530,9 @@ async function cancelExecution() {
 }
 
 function handleOpenChange(nextOpen: boolean) {
+  if (!nextOpen) {
+    batchDialogSession.value = decideSqlFileBatchDialogClose(batchDialogSession.value, isDesktop, batchRunning.value);
+  }
   open.value = nextOpen;
 }
 
@@ -854,7 +852,7 @@ watch(
       <DialogFooter class="shrink-0">
         <template v-if="isDesktop">
           <template v-if="batchRunning">
-            <Button variant="outline" size="sm" @click="runBatchInBackground">
+            <Button variant="outline" size="sm" @click="handleOpenChange(false)">
               {{ t("sqlFile.runInBackground") }}
             </Button>
             <Button variant="destructive" size="sm" :disabled="batchStopping" @click="stopBatch">

@@ -64,6 +64,20 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
     replaceTarget(failSqlFileBatchTarget(target, error));
   }
 
+  function cancelTrackedTarget(target: SqlFileBatchTargetState) {
+    runtime.updateTask(target.executionId, {
+      executionId: target.executionId,
+      status: "cancelled",
+      statementIndex: target.statementIndex,
+      successCount: target.successCount,
+      failureCount: target.failureCount,
+      affectedRows: target.affectedRows,
+      elapsedMs: target.elapsedMs,
+      statementSummary: target.statementSummary,
+      error: null,
+    });
+  }
+
   async function refreshTarget(target: SqlFileBatchTargetState, database: string) {
     if (target.status !== "success" && target.status !== "partial") return;
     try {
@@ -93,7 +107,11 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
           replaceTarget(reduceSqlFileBatchProgress(activeTarget.value ?? target, progress));
           runtime.updateTask(target.executionId, progress);
         });
-        if (stopRequested) return;
+        if (stopRequested) {
+          const stopped = targets.value.find((item) => item.executionId === target.executionId) ?? target;
+          if (!isTerminal(stopped)) cancelTrackedTarget(stopped);
+          return;
+        }
 
         executionStarted = true;
         await runtime.execute({

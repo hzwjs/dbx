@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { decideSqlFileBatchDialogOpen, initialSqlFileBatchDialogSession, markSqlFileBatchBackgroundRestore } from "../../apps/desktop/src/lib/sql/sqlFileBatchDialogSession.ts";
+import { decideSqlFileBatchDialogClose, decideSqlFileBatchDialogOpen, initialSqlFileBatchDialogSession, markSqlFileBatchBackgroundRestore } from "../../apps/desktop/src/lib/sql/sqlFileBatchDialogSession.ts";
+
+test("active desktop update:open close restores completed hidden results exactly once", () => {
+  const closedSession = decideSqlFileBatchDialogClose(initialSqlFileBatchDialogSession(), true, true);
+  assert.equal(closedSession.restoreOnNextOpen, true);
+
+  const completedWhileHidden = decideSqlFileBatchDialogOpen(closedSession, false);
+  assert.equal(completedWhileHidden.reset, false);
+  assert.equal(completedWhileHidden.session.restoreOnNextOpen, false);
+
+  const reviewedThenClosed = decideSqlFileBatchDialogOpen(completedWhileHidden.session, false);
+  assert.equal(reviewedThenClosed.reset, true);
+});
+
+test("Web update:open close does not create a desktop restore marker", () => {
+  const closedSession = decideSqlFileBatchDialogClose(initialSqlFileBatchDialogSession(), false, true);
+
+  assert.equal(closedSession.restoreOnNextOpen, false);
+});
 
 test("background restore survives completion while closed and is consumed exactly once", () => {
   const backgroundSession = markSqlFileBatchBackgroundRestore(initialSqlFileBatchDialogSession());
