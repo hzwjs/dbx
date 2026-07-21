@@ -49,6 +49,21 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
     targets.value = skipPendingSqlFileBatchTargets(targets.value);
   }
 
+  function failTrackedTarget(target: SqlFileBatchTargetState, error: string) {
+    runtime.updateTask(target.executionId, {
+      executionId: target.executionId,
+      status: "error",
+      statementIndex: target.statementIndex,
+      successCount: target.successCount,
+      failureCount: target.failureCount,
+      affectedRows: target.affectedRows,
+      elapsedMs: target.elapsedMs,
+      statementSummary: target.statementSummary,
+      error,
+    });
+    replaceTarget(failSqlFileBatchTarget(target, error));
+  }
+
   async function refreshTarget(target: SqlFileBatchTargetState, database: string) {
     if (target.status !== "success" && target.status !== "partial") return;
     try {
@@ -91,12 +106,12 @@ export function useSqlFileBatchExecution(runtime: SqlFileBatchRuntime): {
 
         const completed = targets.value.find((item) => item.executionId === target.executionId) ?? target;
         if (!isTerminal(completed)) {
-          replaceTarget(failSqlFileBatchTarget(completed, "Execution completed without terminal progress"));
+          failTrackedTarget(completed, "Execution completed without terminal progress");
         }
       } catch (error) {
         const completed = targets.value.find((item) => item.executionId === target.executionId) ?? target;
         if (!isTerminal(completed)) {
-          replaceTarget(failSqlFileBatchTarget(completed, errorMessage(error)));
+          failTrackedTarget(completed, errorMessage(error));
         }
       } finally {
         executionStarted = false;

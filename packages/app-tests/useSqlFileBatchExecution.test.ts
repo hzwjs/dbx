@@ -27,10 +27,12 @@ class Deferred<T> {
 class FakeRuntime implements SqlFileBatchRuntime {
   actions: string[] = [];
   taskIds: string[] = [];
+  taskUpdates: Array<{ executionId: string; progress: SqlFileProgress }> = [];
   cancelledIds: string[] = [];
   refreshedIds: string[] = [];
   prepare = new Map<string, () => Promise<"ready" | "declined">>();
   executeFor = new Map<string, (request: Parameters<SqlFileBatchRuntime["execute"]>[0]) => Promise<void>>();
+  listenFor = new Map<string, () => Promise<() => void>>();
   unlistenCount = 0;
   cancelResult: Promise<boolean> = Promise.resolve(true);
   private handlers = new Map<string, (progress: SqlFileProgress) => void>();
@@ -51,11 +53,14 @@ class FakeRuntime implements SqlFileBatchRuntime {
   }
 
   updateTask(executionId: string, progress: SqlFileProgress) {
+    this.taskUpdates.push({ executionId, progress });
     this.actions.push(`update ${executionId} ${progress.status}`);
   }
 
   async listen(executionId: string, handler: (progress: SqlFileProgress) => void) {
     this.actions.push(`listen ${executionId}`);
+    const customListener = this.listenFor.get(executionId);
+    if (customListener) return customListener();
     this.handlers.set(executionId, handler);
     return () => {
       this.unlistenCount += 1;
@@ -212,6 +217,99 @@ test("fails an execution that throws before terminal progress and cleans up its 
   assert.equal(batch.targets.value[0]?.status, "failed");
   assert.equal(batch.targets.value[0]?.error, "backend disconnected");
   assert.equal(runtime.unlistenCount, 1);
+  assert.deepEqual(runtime.taskUpdates, [
+    {
+      executionId: "a-1",
+      progress: {
+        executionId: "a-1",
+        status: "error",
+        statementIndex: 0,
+        successCount: 0,
+        failureCount: 0,
+        affectedRows: 0,
+        elapsedMs: 0,
+        statementSummary: "",
+        error: "backend disconnected",
+      },
+    },
+  ]);
+});
+
+test("sends the latest progress as a terminal tracker error when execution rejects", async () => {
+  const runtime = new FakeRuntime();
+  runtime.executeFor.set("a", async (next) => {
+    runtime.emit(next.executionId, "statementDone", {
+      statementIndex: 4,
+      successCount: 3,
+      failureCount: 1,
+      affectedRows: 27,
+      elapsedMs: 900,
+      statementSummary: "UPDATE orders",
+    });
+    throw new Error("transport closed");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start({ ...request, connectionIds: ["a"] });
+
+  assert.deepEqual(
+    runtime.taskUpdates.map(({ progress }) => progress),
+    [
+      {
+        executionId: "a-1",
+        status: "statementDone",
+        statementIndex: 4,
+        successCount: 3,
+        failureCount: 1,
+        affectedRows: 27,
+        elapsedMs: 900,
+        statementSummary: "UPDATE orders",
+        error: null,
+      },
+      {
+        executionId: "a-1",
+        status: "error",
+        statementIndex: 4,
+        successCount: 3,
+        failureCount: 1,
+        affectedRows: 27,
+        elapsedMs: 900,
+        statementSummary: "UPDATE orders",
+        error: "transport closed",
+      },
+    ],
+  );
+});
+
+test("sends a terminal tracker error when listener setup rejects", async () => {
+  const runtime = new FakeRuntime();
+  runtime.listenFor.set("a-1", async () => {
+    throw new Error("event channel unavailable");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start({ ...request, connectionIds: ["a"] });
+
+  assert.equal(runtime.actions.includes("execute a"), false);
+  assert.equal(runtime.taskUpdates.length, 1);
+  assert.equal(runtime.taskUpdates[0]?.progress.status, "error");
+  assert.equal(runtime.taskUpdates[0]?.progress.error, "event channel unavailable");
+});
+
+test("does not duplicate a terminal tracker update when execution rejects afterward", async () => {
+  const runtime = new FakeRuntime();
+  runtime.executeFor.set("a", async (next) => {
+    runtime.emit(next.executionId, "error", { error: "permission denied" });
+    throw new Error("request rejected after terminal progress");
+  });
+  const batch = useSqlFileBatchExecution(runtime);
+
+  await batch.start({ ...request, connectionIds: ["a"] });
+
+  assert.deepEqual(
+    runtime.taskUpdates.map(({ progress }) => [progress.status, progress.error]),
+    [["error", "permission denied"]],
+  );
 });
 
 test("cancels the active target and skips pending targets", async () => {

@@ -38,13 +38,16 @@ test("desktop SQL file execution renders ordered multi-target controls and batch
   assert.match(dialogSource, /<Popover v-if="isDesktop"/);
   assert.match(dialogSource, /v-for="c in sameTypeSqlConnections"/);
   assert.match(dialogSource, /@click="toggleTargetSelection\(c\.id\)"/);
+  assert.match(dialogSource, /:aria-pressed="selectedConnectionIds\.includes\(c\.id\)"/);
   assert.match(dialogSource, /t\("sqlFile\.selectedCount", \{ count: selectedConnectionIds\.length \}\)/);
   assert.match(dialogSource, /v-for="target in batchTargets"/);
   assert.match(dialogSource, /const batchDatabase = ref\(""\)/);
   assert.match(dialogSource, /batchDatabase\.value = database\.value\.trim\(\)/);
   assert.match(dialogSource, /@click="toggleTargetExpanded\(target\.executionId\)"/);
   assert.match(dialogSource, /target\.failures/);
-  assert.match(dialogSource, /@click="open = false"[\s\S]*t\("sqlFile\.runInBackground"\)/);
+  assert.match(dialogSource, /markSqlFileBatchBackgroundRestore/);
+  assert.match(dialogSource, /decideSqlFileBatchDialogOpen/);
+  assert.match(dialogSource, /@click="runBatchInBackground"[\s\S]*t\("sqlFile\.runInBackground"\)/);
   assert.match(dialogSource, /@click="stopBatch"[\s\S]*t\("sqlFile\.stopBatch"\)/);
 });
 

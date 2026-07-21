@@ -22,6 +22,7 @@ import { cancelSqlFileExecution, executeSqlFile, listenSqlFileProgress, listData
 import { useExportTracker } from "@/composables/useExportTracker";
 import { useSqlFileBatchExecution } from "@/composables/useSqlFileBatchExecution";
 import type { SqlFileBatchTargetState, SqlFileBatchTargetStatus } from "@/lib/sql/sqlFileBatchExecution";
+import { decideSqlFileBatchDialogOpen, initialSqlFileBatchDialogSession, markSqlFileBatchBackgroundRestore } from "@/lib/sql/sqlFileBatchDialogSession";
 import { Check, CheckSquare, ChevronDown, ChevronRight, FileCode, FolderOpen, Loader2, Play, Square, X } from "@lucide/vue";
 
 const { t } = useI18n();
@@ -49,6 +50,7 @@ const connectionId = ref("");
 const baselineConnectionId = ref("");
 const selectedConnectionIds = ref<string[]>([]);
 const expandedTargetIds = ref<string[]>([]);
+const batchDialogSession = ref(initialSqlFileBatchDialogSession());
 const database = ref("");
 const batchDatabase = ref("");
 const databaseOptions = ref<string[]>([]);
@@ -510,6 +512,11 @@ async function stopBatch() {
   await stopBatchController();
 }
 
+function runBatchInBackground() {
+  batchDialogSession.value = markSqlFileBatchBackgroundRestore(batchDialogSession.value);
+  open.value = false;
+}
+
 async function cancelExecution() {
   if (!executionId.value || !running.value || cancelling.value) return;
   cancelRequested.value = true;
@@ -559,7 +566,13 @@ watch(
   open,
   (value) => {
     if (!value) return;
-    if (executionActive.value) return;
+    if (isDesktop) {
+      const decision = decideSqlFileBatchDialogOpen(batchDialogSession.value, batchRunning.value);
+      batchDialogSession.value = decision.session;
+      if (!decision.reset) return;
+    } else if (running.value) {
+      return;
+    }
     resetState();
     if (isDesktop && baselineConnectionId.value) {
       loadDatabasesForConnection(baselineConnectionId.value);
@@ -643,7 +656,7 @@ watch(
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" class="w-[var(--reka-popover-trigger-width)] gap-0 p-1">
-                  <button v-for="c in sameTypeSqlConnections" :key="c.id" type="button" class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent" @click="toggleTargetSelection(c.id)">
+                  <button v-for="c in sameTypeSqlConnections" :key="c.id" type="button" class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent" :aria-pressed="selectedConnectionIds.includes(c.id)" @click="toggleTargetSelection(c.id)">
                     <CheckSquare v-if="selectedConnectionIds.includes(c.id)" class="h-3.5 w-3.5 shrink-0 text-primary" />
                     <Square v-else class="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
                     <DatabaseIcon :db-type="c.driver_profile || c.db_type" class="h-3.5 w-3.5 shrink-0" />
@@ -841,7 +854,7 @@ watch(
       <DialogFooter class="shrink-0">
         <template v-if="isDesktop">
           <template v-if="batchRunning">
-            <Button variant="outline" size="sm" @click="open = false">
+            <Button variant="outline" size="sm" @click="runBatchInBackground">
               {{ t("sqlFile.runInBackground") }}
             </Button>
             <Button variant="destructive" size="sm" :disabled="batchStopping" @click="stopBatch">
