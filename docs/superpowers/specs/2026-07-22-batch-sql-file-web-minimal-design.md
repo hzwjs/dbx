@@ -227,6 +227,20 @@ interface SqlFileBatchTarget {
 5. 取消调用批次取消接口，不再逐目标从浏览器编排。
 6. 桌面端仍使用现有本地批次组合函数，原 39 项相关测试保持通过。
 
+### E2E 验收方法
+
+E2E 使用真实 `dbx-web`、真实 Vite Web 前端和两个临时 SQLite 数据库，不依赖 Docker 或外部数据库服务：
+
+1. 用 `mktemp -d` 创建独立测试目录，后端设置 `DBX_DATA_DIR=<测试目录>/data`、`DBX_PORT=44224`、`DBX_DISABLE_PASSWORD=1`，前端设置 `DBX_BACKEND_URL=http://127.0.0.1:44224` 并监听 `45173`。
+2. 通过现有 `/api/connection/save` 接口写入两个同类型 SQLite 连接，数据库文件分别为 `<测试目录>/target-a.sqlite` 和 `<测试目录>/target-b.sqlite`。
+3. 使用 Python Playwright 的两个独立 Chromium Context 模拟两名团队成员。服务生命周期由 `webapp-testing/scripts/with_server.py` 管理，浏览器始终无头运行。
+4. 正常批次场景：成员 A 在 UI 上传 SQL、选择 A/B 两个目标并启动；轮询批次快照，断言任一时刻最多一个目标为 `running`，A 到终态后 B 才离开 `pending`，最后两个目标均成功；再用 Python `sqlite3` 读取两个文件，确认标记数据都已落库。
+5. 刷新与共享场景：批次运行中刷新成员 A 页面并重新打开 SQL 文件对话框，断言可从批次列表恢复；成员 B 同时打开对话框，断言看到相同 `batchId`、目标进度和汇总。
+6. 取消场景：使用包含足够多条独立 INSERT 的 SQL 文件保证执行窗口，启动后立即取消；断言当前目标最终为 `cancelled`，后续目标为 `skipped`，并且后续数据库没有批次标记数据。
+7. E2E 失败时保存完整页面截图、浏览器控制台错误、失败请求和最后一份批次快照到测试临时目录；成功后保留文本摘要，临时数据库可删除。
+
+本次验收脚本可由验收 Agent 在临时目录生成和执行，不把 Playwright 或新的 E2E 框架加入项目依赖。服务端编排细节仍由 Rust 测试覆盖，E2E 只验证最关键的真实用户链路，避免为首版扩大工程范围。
+
 ### 范围验收
 
 - `git diff custom/main...HEAD -- crates/dbx-core` 必须为空。
