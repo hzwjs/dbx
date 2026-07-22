@@ -1,6 +1,7 @@
 services:
   dbx:
     image: t8y2/dbx:latest
+    platform: linux/arm64
     # For faster pulls in China, use the CNB image instead:
     # image: docker.cnb.cool/dbxio.com/dbx:latest
     pull_policy: always

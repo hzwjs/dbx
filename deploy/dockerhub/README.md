@@ -26,6 +26,21 @@ Open `http://localhost:4224` and sign in with the value of `DBX_PASSWORD`.
 
 The image supports `linux/amd64` and `linux/arm64`.
 
+### ARM64 offline deployment
+
+For an internal ARM64 server, pin the Compose service to `linux/arm64` (as in
+`deploy/docker-compose.release.yml`). The image includes an ARM64 JRE 21 and
+the Apache RocketMQ Java agent, so startup does not download a JRE or driver.
+OceanBase MySQL Mode continues to use DBX's MySQL compatibility path with
+`db_type=mysql` and `driver_profile=oceanbase`; no separate OceanBase JDBC agent
+is required.
+
+The image keeps its read-only driver bundle under `/opt/dbx/agents`. On startup,
+the entrypoint copies only missing files into `${DBX_AGENT_DIR}` (default
+`/app/data/agents`), so a new or existing `/app/data` volume cannot hide the
+built-in RocketMQ driver. The image contains the client agent only; it does not
+run a RocketMQ NameServer/Broker or an OceanBase server.
+
 ## Docker Compose
 
 ```yaml

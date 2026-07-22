@@ -71,19 +71,43 @@ RUN case "$TARGETARCH" in \
     mkdir -p "/out/linux/$TARGETARCH" && \
     cp "/app/target/$rust_target/release/dbx-web" "/out/linux/$TARGETARCH/"
 
-# Stage 3: Final image
+# Stage 3: Build the platform-independent Java agent with JDK 21.
+FROM --platform=$BUILDPLATFORM gradle:9.5-jdk21 AS rocketmq-agent
+WORKDIR /app/agents
+COPY agents/ .
+RUN ./gradlew :rocketmq:shadowJar --no-daemon \
+    && mkdir -p /out/drivers/rocketmq \
+    && cp drivers/rocketmq/build/libs/dbx-agent-rocketmq*.jar /out/drivers/rocketmq/agent.jar
+
+# Stage 4: Resolve a target-platform JRE. Keeping this in its own stage lets
+# buildx select the ARM64 JRE while the Rust/Gradle stages remain native.
+FROM --platform=$TARGETPLATFORM eclipse-temurin:21-jre-jammy AS jre
+
+# Stage 5: Final image
 FROM debian:bookworm-slim
 ARG TARGETPLATFORM
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fontconfig \
     fonts-dejavu-core \
+    jq \
     libfreetype6 \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=backend /out/${TARGETPLATFORM}/dbx-web /usr/local/bin/
 COPY --from=frontend /app/dist /app/static
+COPY --from=jre /opt/java/openjdk /opt/dbx/agents/jre-21
+COPY --from=rocketmq-agent /out/drivers/rocketmq/agent.jar /opt/dbx/agents/drivers/rocketmq/agent.jar
+COPY agents/versions.json /opt/dbx/agents/versions.json
+COPY deploy/entrypoint.sh /usr/local/bin/dbx-entrypoint
+RUN printf '%s\n' \
+       '{"jre_versions":{"21":"21"},"installed_drivers":{"rocketmq":{"version":"0.1.0","installed_at":"image","jre":"21"}},"java_runtime":{"mode":"managed"}}' \
+       > /opt/dbx/agents/state.json \
+    && chmod 0555 /usr/local/bin/dbx-entrypoint \
+    && chmod -R a-w /opt/dbx/agents
 ENV DBX_STATIC_DIR=/app/static
 ENV DBX_DATA_DIR=/app/data
+ENV DBX_AGENT_DIR=/app/data/agents
 EXPOSE 4224
+ENTRYPOINT ["dbx-entrypoint"]
 CMD ["dbx-web"]
