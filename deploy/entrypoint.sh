@@ -145,10 +145,13 @@ if [ -e "$target_dir/state.json" ] && jq -e '.installed_drivers.rocketmq and ((.
   state_needs_merge=0
 fi
 if [ -e "$target_dir/state.json" ] && [ ! -L "$target_dir/state.json" ]; then
-  existing_rocketmq_jre=$(jq -r '.installed_drivers.rocketmq.jre // empty' "$target_dir/state.json" 2>/dev/null || true)
-  if [ -n "$existing_rocketmq_jre" ] && [ "$existing_rocketmq_jre" != "21" ] \
-    && ! jre_is_usable "$target_dir/jre-$existing_rocketmq_jre/bin/java"; then
-    stale_rocketmq_jre=1
+  existing_rocketmq_jre=$(jq -r 'if .installed_drivers.rocketmq == null then "__missing_record__" elif (.installed_drivers.rocketmq | has("jre")) then (.installed_drivers.rocketmq.jre // "") else "__missing_field__" end' "$target_dir/state.json" 2>/dev/null || true)
+  if [ "$existing_rocketmq_jre" != "__missing_record__" ] \
+    && [ "$existing_rocketmq_jre" != "__missing_field__" ] \
+    && [ "$existing_rocketmq_jre" != "21" ]; then
+    if [ -z "$existing_rocketmq_jre" ] || ! jre_is_usable "$target_dir/jre-$existing_rocketmq_jre/bin/java"; then
+      stale_rocketmq_jre=1
+    fi
   fi
 fi
 
