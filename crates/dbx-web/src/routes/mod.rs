@@ -4,6 +4,7 @@ pub mod app_settings;
 pub mod cloud_sync;
 pub mod connection;
 pub mod data_compare;
+pub mod database_backup;
 pub mod database_export;
 pub mod document_store;
 pub mod etcd;

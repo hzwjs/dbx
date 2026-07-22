@@ -87,13 +87,14 @@ FROM --platform=$TARGETPLATFORM eclipse-temurin:21-jre-jammy AS jre
 # Stage 5: Final image
 FROM debian:bookworm-slim
 ARG TARGETPLATFORM
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fontconfig \
     fonts-dejavu-core \
     jq \
     libfreetype6 \
     libssl3 \
+    tzdata \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=backend /out/${TARGETPLATFORM}/dbx-web /usr/local/bin/

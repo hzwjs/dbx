@@ -7,6 +7,10 @@ services:
       - "4224:4224"
     environment:
       - DBX_PASSWORD=changeme
+      # Daily/weekly backup schedules are interpreted in the server time zone.
+      - TZ=Asia/Shanghai
+      # Defaults to /app/data/backups, which is already covered by dbx-data.
+      # - DBX_BACKUP_DIR=/app/data/backups
       # Uncomment when publishing DBX under a reverse-proxy subpath, e.g. https://example.com/dbx/
       # - DBX_PUBLIC_BASE_PATH=/dbx
     volumes:

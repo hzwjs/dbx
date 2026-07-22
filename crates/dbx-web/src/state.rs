@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
+use crate::database_backup::WebDatabaseBackupManager;
 use crate::sql_file_batch::SqlFileBatchRegistry;
 
 pub struct LoginRateLimit {
@@ -25,6 +26,7 @@ pub struct WebState {
     pub login_rate_limit: Mutex<LoginRateLimit>,
     /// Table export temp files: export_id -> (file_path, format)
     pub export_files: RwLock<HashMap<String, (String, String)>>,
+    pub database_backup: Arc<WebDatabaseBackupManager>,
 }
 
 impl WebState {

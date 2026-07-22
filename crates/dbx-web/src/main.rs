@@ -1,4 +1,7 @@
+#![recursion_limit = "256"]
+
 mod auth;
+mod database_backup;
 mod error;
 mod routes;
 mod sql_file_batch;
@@ -159,6 +162,14 @@ async fn main() {
         ))
     };
 
+    let database_backup = database_backup::WebDatabaseBackupManager::initialize(
+        app_state.clone(),
+        &data_dir,
+        std::env::var("DBX_BACKUP_DIR").ok(),
+    )
+    .await
+    .expect("Failed to initialize Web database backups");
+
     // Password hash: env var takes priority, then database
     let password_disabled = std::env::var("DBX_DISABLE_PASSWORD")
         .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -187,7 +198,10 @@ async fn main() {
         sql_file_batches: Arc::new(SqlFileBatchRegistry::default()),
         login_rate_limit: tokio::sync::Mutex::new(state::LoginRateLimit { fail_count: 0, locked_until: None }),
         export_files: RwLock::new(HashMap::new()),
+        database_backup: database_backup.clone(),
     });
+
+    database_backup::start_web_database_backup_scheduler(database_backup);
 
     // API routes
     let api = Router::new()
@@ -541,6 +555,25 @@ async fn main() {
         .route("/export/database/progress/{exportId}", get(routes::database_export::database_export_progress))
         .route("/export/database/cancel", post(routes::database_export::cancel_database_export))
         .route("/export/database/download/{exportId}", get(routes::database_export::database_export_download))
+        // Web database backups own server-side paths, persistence and scheduling.
+        .route("/database-backups/config", get(routes::database_backup::config))
+        .route(
+            "/database-backups/schedules",
+            get(routes::database_backup::list_schedules).post(routes::database_backup::create_schedule),
+        )
+        .route(
+            "/database-backups/schedules/{scheduleId}",
+            axum::routing::put(routes::database_backup::update_schedule)
+                .delete(routes::database_backup::delete_schedule),
+        )
+        .route("/database-backups/schedules/{scheduleId}/run", post(routes::database_backup::run_schedule))
+        .route("/database-backups/runs", get(routes::database_backup::list_runs))
+        .route("/database-backups/runs/{runId}/cancel", post(routes::database_backup::cancel_run))
+        .route(
+            "/database-backups/runs/{runId}/files/{relativePath}/download",
+            get(routes::database_backup::download_run_file),
+        )
+        .route("/database-backups/runs/{runId}", delete(routes::database_backup::delete_run))
         // Table export
         .route("/export/table", post(routes::table_export::start_table_export))
         .route("/export/table/progress/{exportId}", get(routes::table_export::table_export_progress))

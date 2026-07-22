@@ -827,6 +827,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
         let app = Arc::new(AppState::new_with_plugin_dir(storage, dir.join("plugins")));
+        let database_backup =
+            crate::database_backup::WebDatabaseBackupManager::initialize(app.clone(), &dir, None).await.unwrap();
         let state = Arc::new(WebState {
             app,
             data_dir: dir.clone(),
@@ -839,6 +841,7 @@ mod tests {
             sql_file_batches: Arc::new(SqlFileBatchRegistry::default()),
             login_rate_limit: Mutex::new(LoginRateLimit { fail_count: 0, locked_until: None }),
             export_files: RwLock::new(HashMap::new()),
+            database_backup,
         });
         (state, dir)
     }

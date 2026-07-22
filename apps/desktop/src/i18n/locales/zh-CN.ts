@@ -4378,6 +4378,7 @@ export default withEnglishFallback({
     history: "备份历史",
     noHistory: "暂无备份记录",
     showFiles: "显示备份文件",
+    downloadFile: "下载备份文件",
     scheduledTrigger: "定时执行",
     manualTrigger: "手动执行",
     fileCount: "{count} 个文件",

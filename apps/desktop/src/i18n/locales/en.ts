@@ -4388,6 +4388,7 @@ export default {
     history: "Backup history",
     noHistory: "No backups yet",
     showFiles: "Show backup files",
+    downloadFile: "Download backup file",
     scheduledTrigger: "Scheduled",
     manualTrigger: "Manual",
     fileCount: "{count} files",

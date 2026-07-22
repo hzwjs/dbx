@@ -77,10 +77,14 @@ docker compose up -d --pull always
 | `DBX_PASSWORD` | Not set | Access password for the DBX Web login page. Set a strong value for server deployments. |
 | `DBX_DISABLE_PASSWORD` | `false` | Disables login protection when set to `true`. Do not use this on an untrusted network. |
 | `DBX_DATA_DIR` | `/app/data` | Directory containing the DBX database, plugins, drivers, and other persistent data. |
+| `DBX_BACKUP_DIR` | `${DBX_DATA_DIR}/backups` | Server-owned directory for Web database backup SQL files. Mount it persistently if it is outside `DBX_DATA_DIR`. |
+| `TZ` | Image default | Server time zone used to interpret daily and weekly Web backup schedules. |
 | `DBX_PORT` | `4224` | HTTP port inside the container. |
 | `DBX_PUBLIC_BASE_PATH` | `/` | URL prefix for reverse-proxy deployments, for example `/dbx`. |
 
 Persist `/app/data` with a named volume or bind mount. Removing this data removes saved connections and other DBX application data.
+
+Web database backup schedules and history are stored in `/app/data/web-database-backups.json`, and backup SQL files default to `/app/data/backups`. Run only one DBX Web process against a given `DBX_DATA_DIR`; the first release does not coordinate schedulers across replicas.
 
 ## Reverse Proxy
 

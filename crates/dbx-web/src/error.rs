@@ -18,6 +18,10 @@ impl AppError {
     pub fn not_found(msg: impl Into<String>) -> Self {
         AppError { message: msg.into(), status: StatusCode::NOT_FOUND }
     }
+
+    pub fn conflict(msg: impl Into<String>) -> Self {
+        AppError { message: msg.into(), status: StatusCode::CONFLICT }
+    }
 }
 
 impl IntoResponse for AppError {
