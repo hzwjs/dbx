@@ -32,16 +32,21 @@ has_blocking_component() {
   return 1
 }
 
+has_blocking_parent() {
+  has_blocking_component "$(dirname "$1")"
+}
+
 jar_is_usable() {
   jar_candidate=$1
-  [ -f "$jar_candidate" ] && [ ! -L "$jar_candidate" ] && [ -s "$jar_candidate" ] \
+  [ -f "$jar_candidate" ] && [ ! -L "$jar_candidate" ] && ! has_blocking_parent "$jar_candidate" \
+    && [ -s "$jar_candidate" ] \
     && unzip -p "$jar_candidate" META-INF/MANIFEST.MF 2>/dev/null \
     | grep -Eq '^Main-Class:[[:space:]]*[^[:space:]]'
 }
 
 jre_is_usable() {
   java_candidate=$1
-  [ -x "$java_candidate" ] && [ ! -L "$java_candidate" ] \
+  [ -x "$java_candidate" ] && [ ! -L "$java_candidate" ] && ! has_blocking_parent "$java_candidate" \
     && timeout 5 "$java_candidate" -version >/dev/null 2>&1
 }
 
@@ -66,15 +71,20 @@ copy_file_if_missing() {
   cp -a "$source_path" "$target_path"
 }
 
-remove_empty_file() {
+remove_invalid_file() {
   target_path=$1
   if [ -f "$target_path" ] && [ ! -L "$target_path" ] && [ ! -s "$target_path" ]; then
-    if has_blocking_component "$target_path"; then
-      echo "Skipping symlink agent path: $target_path" >&2
-    else
-      rm -f "$target_path"
-    fi
+    :
+  elif [ -f "$target_path" ] && [ ! -L "$target_path" ]; then
+    :
+  else
+    return 0
   fi
+  if has_blocking_parent "$target_path"; then
+    echo "Skipping unsafe agent path: $target_path" >&2
+    return 1
+  fi
+  rm -f "$target_path"
 }
 
 copy_tree_missing() {
@@ -109,12 +119,10 @@ jre_was_usable=0
 jar_is_usable "$jar_path" && jar_was_usable=1
 jre_is_usable "$jre_java_path" && jre_was_usable=1
 if [ "$jar_was_usable" -eq 0 ] && [ -f "$jar_path" ] && [ ! -L "$jar_path" ]; then
-  remove_empty_file "$jar_path"
-  [ -e "$jar_path" ] && rm -f "$jar_path"
+  remove_invalid_file "$jar_path" || :
 fi
 if [ "$jre_was_usable" -eq 0 ] && [ -f "$jre_java_path" ] && [ ! -L "$jre_java_path" ]; then
-  remove_empty_file "$jre_java_path"
-  [ -e "$jre_java_path" ] && rm -f "$jre_java_path"
+  remove_invalid_file "$jre_java_path" || :
 fi
 
 copy_tree_missing "$source_dir/jre-21" "$target_dir/jre-21"
@@ -132,8 +140,16 @@ jar_is_usable "$jar_path" && jar_is_usable=1
 jre_is_usable "$jre_java_path" && jre_is_usable=1
 
 state_needs_merge=1
+stale_rocketmq_jre=0
 if [ -e "$target_dir/state.json" ] && jq -e '.installed_drivers.rocketmq and ((.jre_versions["21"] // .jre_version) != null)' "$target_dir/state.json" >/dev/null 2>&1; then
   state_needs_merge=0
+fi
+if [ -e "$target_dir/state.json" ] && [ ! -L "$target_dir/state.json" ]; then
+  existing_rocketmq_jre=$(jq -r '.installed_drivers.rocketmq.jre // empty' "$target_dir/state.json" 2>/dev/null || true)
+  if [ -n "$existing_rocketmq_jre" ] && [ "$existing_rocketmq_jre" != "21" ] \
+    && ! jre_is_usable "$target_dir/jre-$existing_rocketmq_jre/bin/java"; then
+    stale_rocketmq_jre=1
+  fi
 fi
 
 if [ ! -e "$target_dir/state.json" ] && [ ! -L "$target_dir/state.json" ]; then
@@ -141,13 +157,13 @@ if [ ! -e "$target_dir/state.json" ] && [ ! -L "$target_dir/state.json" ]; then
 elif [ -L "$target_dir/state.json" ]; then
   echo "Warning: refusing to replace symlink state.json; preserving existing state" >&2
 elif [ "$jar_is_usable" -eq 1 ] && [ "$jre_is_usable" -eq 1 ] \
-  && { [ "$jar_was_usable" -eq 0 ] || [ "$jre_was_usable" -eq 0 ] || [ "$state_needs_merge" -eq 1 ]; }; then
+  && { [ "$jar_was_usable" -eq 0 ] || [ "$jre_was_usable" -eq 0 ] || [ "$state_needs_merge" -eq 1 ] || [ "$stale_rocketmq_jre" -eq 1 ]; }; then
   # Keep user-installed drivers and Java settings, but merge the image's
   # built-in RocketMQ/JRE records into an existing data volume. AgentManager
   # uses these records in addition to checking the executable/JAR paths.
   if state_tmp=$(mktemp "$target_dir/.state.json.XXXXXX"); then
     replace_builtin=0
-    if [ "$jar_was_usable" -eq 0 ] || [ "$jre_was_usable" -eq 0 ]; then
+    if [ "$jar_was_usable" -eq 0 ] || [ "$jre_was_usable" -eq 0 ] || [ "$stale_rocketmq_jre" -eq 1 ]; then
       replace_builtin=1
     fi
     if jq \
