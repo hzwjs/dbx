@@ -1,0 +1,15 @@
+services:
+  dbx:
+    image: dbx:arm64-local-fixed
+    platform: linux/arm64
+    ports:
+      - "4224:4224"
+    environment:
+      DBX_PASSWORD: ${DBX_PASSWORD:?set DBX_PASSWORD before starting}
+    volumes:
+      - dbx-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  dbx-data:
+    name: dbx-data

@@ -64,3 +64,7 @@ DBX_*_x64-portable.zip
 .pnpm-store/*
 .dbx-web
 .npmrc
+
+# Local offline deployment media
+deploy/artifacts/*.tar
+deploy/artifacts/*.tar.gz
