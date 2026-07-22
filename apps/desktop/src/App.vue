@@ -1514,7 +1514,24 @@ function ensureQueryTab(): string {
   return queryStore.createTab(connId, db, undefined, "query");
 }
 
+function routeAiRedisCommand(command: string, execute: boolean): boolean {
+  if (activeConnection.value?.db_type !== "redis") return false;
+
+  // Redis has a dedicated console. Falling through to ensureQueryTab() would
+  // recreate the original bug by opening a SQL tab for a Redis command.
+  const routed = execute ? contentAreaRef.value?.executeRedisCommand(command) : contentAreaRef.value?.insertRedisCommand(command);
+  if (!routed) {
+    console.warn("[DBX] Redis AI command could not reach the active Redis console");
+    return true;
+  }
+  void routed.then((handled) => {
+    if (!handled) console.warn("[DBX] Redis AI command could not reach the active Redis console");
+  });
+  return true;
+}
+
 function onAiReplaceSql(sql: string) {
+  if (routeAiRedisCommand(sql, false)) return;
   const tabId = ensureQueryTab();
   queryStore.updateSql(tabId, sql);
 }
@@ -1525,17 +1542,20 @@ function runAiGeneratedSql(sql: string) {
 }
 
 function onAiExecuteSql(sql: string) {
+  if (routeAiRedisCommand(sql, true)) return;
   const tabId = ensureQueryTab();
   queryStore.updateSql(tabId, buildAppendedEditorSql(activeTab.value?.sql || "", sql));
   runAiGeneratedSql(sql);
 }
 
 function onAiTempRunSql(sql: string) {
+  if (routeAiRedisCommand(sql, true)) return;
   ensureQueryTab();
   runAiGeneratedSql(sql);
 }
 
 function onAiRequestAutoExecuteSql(sql: string) {
+  if (routeAiRedisCommand(sql, true)) return;
   const tabId = ensureQueryTab();
   queryStore.updateSql(tabId, buildAppendedEditorSql(activeTab.value?.sql || "", sql));
   selectedSql.value = "";
@@ -2264,6 +2284,8 @@ onUnmounted(() => {
                 @execute-sql="onAiExecuteSql"
                 @temp-run-sql="onAiTempRunSql"
                 @request-auto-execute-sql="onAiRequestAutoExecuteSql"
+                @insert-redis-command="(command: string) => routeAiRedisCommand(command, false)"
+                @execute-redis-command="(command: string) => routeAiRedisCommand(command, true)"
                 @open-explain-plan="onAiOpenExplainPlan"
                 @close="closeRightSidebarPanel('ai')"
               />
