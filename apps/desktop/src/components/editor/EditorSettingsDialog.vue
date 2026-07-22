@@ -95,9 +95,9 @@ import { currentExecutableStatementRange, type SqlTextRange } from "@/lib/sql/sq
 import { executableStatementRangeCacheForDoc, executableStatementRangeStartingAt, type ExecutableStatementRangeCache } from "@/lib/sql/executableStatementRangeCache";
 import { EMPTY_TABLE_COLUMN_TEMPLATE_DATA_TYPE, parseTableColumnTemplateFields, TABLE_COLUMN_TEMPLATE_DATABASE_TYPES } from "@/lib/table/tableColumnTemplates";
 import { DEFAULT_SQL_VARIABLE_SYNTAX_TOGGLES, normalizeSqlVariableSyntaxOverrides, SQL_VARIABLE_SYNTAX_DATABASE_TYPES, SQL_VARIABLE_SYNTAX_KEYS, SQL_VARIABLE_SYNTAX_TOKENS, type SqlVariableSyntaxOverrides, type SqlVariableSyntaxToggles } from "@/lib/sql/sqlVariableSyntax";
-import { buildMcpCherryStudioConfig, buildMcpCodexConfig, buildMcpJsonConfig, buildMcpOpenCodeConfig, buildMcpVsCodeConfig, mcpWebBackendUrl, type McpLaunchConfig } from "@/lib/mcp/mcpConfigTemplates";
+import { buildMcpCherryStudioConfig, buildMcpCodexConfig, buildMcpJsonConfig, buildMcpOpenCodeConfig, buildMcpTraeConfig, buildMcpVsCodeConfig, mcpWebBackendUrl, type McpLaunchConfig } from "@/lib/mcp/mcpConfigTemplates";
 import { isMcpPolicyMutationBlocked, MCP_CAPABILITY_ROWS, MCP_EXECUTION_MODE_COLUMNS, mcpExecutionModeFromPolicy, mcpPolicyFieldsForExecutionMode, type McpExecutionMode } from "@/lib/mcp/mcpPolicySelection";
-import { isMacOS } from "@/lib/backend/platform";
+import { isMacOS, isWindows } from "@/lib/backend/platform";
 import { combineDataTypeForDatabase, dataTypeLengthInputValue, getDataTypeOptions, getDefaultLengthForType, isDataTypeLengthDisabled, splitDataType } from "@/lib/table/tableStructureEditorState";
 import { useToast } from "@/composables/useToast";
 import type { DatabaseType, SqlSnippet } from "@/types/database";
@@ -113,6 +113,7 @@ import { APP_THEME_PALETTES, type AppThemeAppearance, type AppThemeMode, type Ap
 import { editorSettingsDraftChanged, editorSettingsDraftFromSettings, editorSettingsPatchFromDraft, normalizeTableOpenPageSizeDraft, type EditorSettingsDraft } from "@/lib/settings/editorSettingsDraft";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
+import { usePromptTemplateStore } from "@/stores/promptTemplateStore";
 import { useTunnelProfileStore } from "@/stores/tunnelProfileStore";
 import { currentLocale, setLocale, type Locale } from "@/i18n";
 import { LOCALE_OPTIONS } from "@/lib/app/localeOptions";
@@ -122,12 +123,15 @@ import { DEFAULT_UI_FONT_FAMILY, SYSTEM_UI_FONT_FAMILY } from "@/lib/app/appFont
 import { buildAppSupportInfoRows, formatAppSupportInfoForClipboard, type AppSupportInfoLabels } from "@/lib/app/supportInfo";
 import { DateTimePatterns, normalizeSupportedDateTimePattern } from "@/lib/dataGrid/columnFormatter";
 import { MAX_RESULT_PAGE_SIZE, MIN_RESULT_PAGE_SIZE } from "@/lib/dataGrid/paginationPageSize";
+import type { PromptTemplate } from "@/types/promptTemplate";
+import { GLOBAL_INSTRUCTIONS_MAX, PROMPT_TEMPLATE_CONTENT_MAX, PROMPT_TEMPLATE_NAME_MAX, promptTemplateCharacterCount } from "@/types/promptTemplate";
 
 const { t } = useI18n();
 const { toast } = useToast();
 const settingsStore = useSettingsStore();
 const connectionStore = useConnectionStore();
 const savedSqlStore = useSavedSqlStore();
+const promptTemplateStore = usePromptTemplateStore();
 const tunnelProfileStore = useTunnelProfileStore();
 const { isDark, themeMode, themePalette, setThemeMode, setThemePalette } = useTheme();
 
@@ -1430,6 +1434,7 @@ const mcpInstalling = ref(false);
 const mcpInstallMessage = ref("");
 const mcpInstallError = ref(false);
 const mcpExecutionMode = computed(() => mcpExecutionModeFromPolicy(settingsStore.mcpGlobalPolicy));
+const mcpExecutionModeOptions: McpExecutionMode[] = ["read_only", "safe_write", "high_risk_write"];
 const mcpAllowedConnectionIds = computed(() => settingsStore.mcpGlobalPolicy.allowedConnectionIds);
 const mcpSelectableConnections = computed(() => connectionStore.connections);
 const mcpPolicyControlsDisabled = computed(() =>
@@ -1452,13 +1457,32 @@ async function saveMcpPolicy(partial: { readOnly?: boolean; allowDangerousSql?: 
   }
 }
 
-function onMcpExecutionModeChange(event: Event, mode: McpExecutionMode) {
+function onMcpExecutionModeChange(mode: McpExecutionMode) {
   if (mode === mcpExecutionMode.value) return;
   if (mode === "high_risk_write" && !window.confirm(t("settings.mcpExecutionModeHighRiskConfirm"))) {
-    event.preventDefault();
     return;
   }
   void saveMcpPolicy(mcpPolicyFieldsForExecutionMode(mode));
+}
+
+function onMcpExecutionModeKeydown(event: KeyboardEvent, mode: McpExecutionMode) {
+  if (mcpPolicyControlsDisabled.value) return;
+  const currentIndex = mcpExecutionModeOptions.indexOf(mode);
+  let nextIndex: number | undefined;
+  if (event.key === "Home") nextIndex = 0;
+  else if (event.key === "End") nextIndex = mcpExecutionModeOptions.length - 1;
+  else if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (currentIndex + 1) % mcpExecutionModeOptions.length;
+  else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex - 1 + mcpExecutionModeOptions.length) % mcpExecutionModeOptions.length;
+  if (nextIndex === undefined || nextIndex === currentIndex) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  const nextMode = mcpExecutionModeOptions[nextIndex];
+  // These cards visually replace native radios, so preserve the radio-group keyboard contract.
+  const currentTarget = event.currentTarget;
+  const group = currentTarget instanceof HTMLElement ? currentTarget.closest<HTMLElement>('[role="radiogroup"]') : null;
+  group?.querySelector<HTMLElement>(`[data-mcp-execution-mode="${nextMode}"]`)?.focus();
+  onMcpExecutionModeChange(nextMode);
 }
 
 function onMcpAllowedConnectionIdsChange(allowedConnectionIds: string[] | null) {
@@ -1488,6 +1512,12 @@ const mcpLaunchConfig = computed<McpLaunchConfig | undefined>(() => {
 });
 
 const mcpJsonRecommendedConfig = computed(() => buildMcpJsonConfig(mcpLaunchConfig.value));
+
+const mcpTraeRecommendedConfig = computed(() => {
+  // TRAE currently splits Windows executable paths containing spaces, so bypass Node and launch the native MCP binary directly.
+  const nativeBinPath = !isWeb && isWindows() ? mcpStatus.value?.native_bin_path : undefined;
+  return buildMcpTraeConfig(mcpLaunchConfig.value, nativeBinPath ?? undefined);
+});
 
 const mcpVsCodeRecommendedConfig = computed(() => buildMcpVsCodeConfig(mcpLaunchConfig.value));
 
@@ -1941,15 +1971,33 @@ watch(snippetProvider, (provider) => {
   void refreshSnippetTokenStatus();
 });
 
-watch(activeSettingsTab, (tab) => {
+watch(activeSettingsTab, async (tab) => {
   if (tab === "mcp" && !mcpStatus.value && !mcpStatusLoading.value) void refreshMcpStatus();
   if (tab === "ai" && aiIsCliProvider.value) void ensureCliMcpStatus();
+  if (tab === "ai") {
+    // Await completion so we don't snapshot an empty default when the store
+    // is still loading its first payload (init via App.vue is fire-and-forget).
+    await promptTemplateStore.ensureLoaded();
+    editGlobalInstructions.value = promptTemplateStore.globalInstructions;
+  }
   if (tab === "about" && !appSupportInfo.value) void refreshAppSupportInfo();
   if (tab === "appearance") {
     checkLayoutDescTruncation();
     checkIconThemeDescTruncation();
   }
 });
+
+// If the store finishes loading while the AI tab is already open (e.g. a retry
+// from another entry point succeeded after the tab-switch snapshot saw a failed
+// load), backfill the textarea — but never clobber text the user already typed.
+watch(
+  () => promptTemplateStore.isLoaded,
+  (loaded) => {
+    if (loaded && activeSettingsTab.value === "ai" && !editGlobalInstructions.value) {
+      editGlobalInstructions.value = promptTemplateStore.globalInstructions;
+    }
+  },
+);
 
 onMounted(() => {
   void refreshWebDavPasswordStatus();
@@ -1999,6 +2047,116 @@ async function changePassword() {
 }
 
 // ---------- AI Settings ----------
+
+// Global Custom Instructions
+const editGlobalInstructions = ref("");
+const globalInstructionsSaving = ref(false);
+
+// Prompt Templates Management
+const templateEditing = ref<PromptTemplate | null>(null);
+const templateFormOpen = ref(false);
+const templateForm = ref<{ name: string; content: string }>({ name: "", content: "" });
+const templateFormIsNew = ref(true);
+const templateSaving = ref(false);
+const templateDeleteConfirm = ref<PromptTemplate | null>(null);
+const templateDeleteConfirmOpen = ref(false);
+
+watch(templateDeleteConfirm, (val) => {
+  templateDeleteConfirmOpen.value = val !== null;
+});
+watch(templateDeleteConfirmOpen, (val) => {
+  if (!val) templateDeleteConfirm.value = null;
+});
+
+function openNewTemplate() {
+  templateForm.value = { name: "", content: "" };
+  templateFormIsNew.value = true;
+  templateEditing.value = null;
+  templateFormOpen.value = true;
+}
+
+function openEditTemplate(tpl: PromptTemplate) {
+  templateForm.value = { name: tpl.name, content: tpl.content };
+  templateFormIsNew.value = false;
+  templateEditing.value = tpl;
+  templateFormOpen.value = true;
+}
+
+function closeTemplateForm() {
+  templateForm.value = { name: "", content: "" };
+  templateEditing.value = null;
+  templateFormOpen.value = false;
+}
+
+function templateNameValid(): boolean {
+  return templateForm.value.name.trim().length > 0;
+}
+
+function templateContentValid(): boolean {
+  return templateForm.value.content.trim().length > 0;
+}
+
+function templateNameTooLong(): boolean {
+  return promptTemplateCharacterCount(templateForm.value.name) > PROMPT_TEMPLATE_NAME_MAX;
+}
+
+function templateContentTooLong(): boolean {
+  return promptTemplateCharacterCount(templateForm.value.content) > PROMPT_TEMPLATE_CONTENT_MAX;
+}
+
+function localNameDuplicate(): boolean {
+  const name = templateForm.value.name.trim();
+  if (!name) return false;
+  const existingId = templateEditing.value?.id ?? "";
+  return promptTemplateStore.templates.some((t) => t.id !== existingId && t.name.toLowerCase() === name.toLowerCase());
+}
+
+function templateSaveDisabled(): boolean {
+  return templateSaving.value || !templateNameValid() || !templateContentValid() || templateNameTooLong() || templateContentTooLong();
+}
+
+async function saveTemplateForm() {
+  if (templateSaveDisabled()) return;
+  templateSaving.value = true;
+  try {
+    const id = templateEditing.value?.id ?? uuid();
+    await promptTemplateStore.save(id, templateForm.value.name.trim(), templateForm.value.content.trim());
+    closeTemplateForm();
+    toast(t("ai.promptTemplateSaved"));
+  } catch (e: any) {
+    toast(e?.message || String(e), 5000);
+  } finally {
+    templateSaving.value = false;
+  }
+}
+
+async function confirmDeleteTemplate(tpl: PromptTemplate) {
+  try {
+    await promptTemplateStore.remove(tpl.id);
+    toast(t("ai.promptTemplateDeleted"));
+  } catch (e: any) {
+    toast(e?.message || String(e), 5000);
+  } finally {
+    templateDeleteConfirm.value = null;
+  }
+}
+
+async function saveGlobalInstructions() {
+  if (promptTemplateCharacterCount(editGlobalInstructions.value) > GLOBAL_INSTRUCTIONS_MAX) return;
+  globalInstructionsSaving.value = true;
+  try {
+    await promptTemplateStore.saveGlobalInstructions(editGlobalInstructions.value);
+    toast(t("ai.globalInstructionsSaved"));
+  } catch (e: any) {
+    toast(e?.message || String(e), 5000);
+  } finally {
+    globalInstructionsSaving.value = false;
+  }
+}
+
+function globalInstructionsTooLong(): boolean {
+  return promptTemplateCharacterCount(editGlobalInstructions.value) > GLOBAL_INSTRUCTIONS_MAX;
+}
 
 // AI Config Delete Confirmation
 const aiDeleteConfirmOpen = ref(false);
@@ -3658,6 +3816,13 @@ onUnmounted(cleanupPreviewEditor);
                     <p>{{ t("settings.toolbarHiddenHint") }}</p>
                   </HelpTooltip>
                 </div>
+                <div class="flex items-center justify-between gap-4 rounded-md border border-border/60 p-3">
+                  <div class="space-y-1">
+                    <Label for="exclusive-right-sidebar-panels" class="text-sm cursor-pointer">{{ t("settings.exclusiveRightSidebarPanels") }}</Label>
+                    <p class="text-xs text-muted-foreground">{{ t("settings.exclusiveRightSidebarPanelsDescription") }}</p>
+                  </div>
+                  <Switch id="exclusive-right-sidebar-panels" v-model="editToolbarItems.exclusiveRightSidebarPanels" />
+                </div>
                 <div class="grid grid-cols-3 gap-2 mt-2">
                   <div
                     v-for="item in [
@@ -4535,6 +4700,92 @@ onUnmounted(cleanupPreviewEditor);
                 </div>
               </div>
 
+              <!-- Global Custom Instructions (list mode) -->
+              <div v-if="aiConfigListMode === 'list'" class="space-y-3">
+                <Separator />
+                <div>
+                  <h3 class="text-sm font-medium">{{ t("ai.globalInstructions") }}</h3>
+                  <p class="text-xs text-muted-foreground">{{ t("ai.globalInstructionsDescription") }}</p>
+                </div>
+                <textarea v-model="editGlobalInstructions" class="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono resize-y min-h-[80px]" rows="4" :placeholder="t('ai.globalInstructionsDescription')"></textarea>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs" :class="globalInstructionsTooLong() ? 'text-destructive' : 'text-muted-foreground'">
+                    {{ t("ai.globalInstructionsCharCount", { count: promptTemplateCharacterCount(editGlobalInstructions), max: GLOBAL_INSTRUCTIONS_MAX }) }}
+                  </span>
+                  <Button type="button" size="sm" :disabled="!promptTemplateStore.isLoaded || globalInstructionsTooLong() || globalInstructionsSaving" @click="saveGlobalInstructions">
+                    {{ globalInstructionsSaving ? t("common.processing") : t("ai.globalInstructionsSave") }}
+                  </Button>
+                </div>
+              </div>
+
+              <!-- Prompt Templates Management (list mode) -->
+              <div v-if="aiConfigListMode === 'list'" class="space-y-3">
+                <Separator />
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="text-sm font-medium">{{ t("ai.promptTemplates") }}</h3>
+                    <p class="text-xs text-muted-foreground">{{ t("ai.promptTemplatesDescription") }}</p>
+                  </div>
+                  <Button v-if="!templateFormOpen" type="button" size="sm" @click="openNewTemplate">
+                    <Plus class="mr-1 h-3.5 w-3.5" />
+                    {{ t("ai.promptTemplateNew") }}
+                  </Button>
+                </div>
+
+                <!-- Template list -->
+                <div v-if="!templateFormOpen && promptTemplateStore.templates.length > 0" class="space-y-1.5">
+                  <div v-for="tpl in promptTemplateStore.templates" :key="tpl.id" class="flex items-center justify-between rounded-md border p-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="text-sm font-medium truncate">{{ tpl.name }}</div>
+                      <div class="text-xs text-muted-foreground truncate">{{ tpl.content.slice(0, 100) }}{{ tpl.content.length > 100 ? "..." : "" }}</div>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0 ml-2">
+                      <Button type="button" size="sm" variant="ghost" @click="openEditTemplate(tpl)">{{ t("common.edit") }}</Button>
+                      <Button type="button" size="sm" variant="ghost" class="text-destructive" @click="templateDeleteConfirm = tpl">{{ t("common.delete") }}</Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="!templateFormOpen && promptTemplateStore.templates.length === 0" class="rounded-md border border-dashed p-6 text-center">
+                  <p class="text-sm text-muted-foreground">{{ t("ai.promptTemplateNoTemplates") }}</p>
+                </div>
+
+                <!-- Template Edit Form -->
+                <div v-if="templateFormOpen" class="rounded-md border p-4 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <h4 class="text-sm font-medium">{{ templateFormIsNew ? t("ai.promptTemplateNew") : t("ai.promptTemplateEdit") }}</h4>
+                    <Button type="button" variant="ghost" size="sm" @click="closeTemplateForm">
+                      <X class="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div>
+                    <Label class="text-xs">{{ t("ai.promptTemplateName") }}</Label>
+                    <Input v-model="templateForm.name" class="mt-1 h-8 text-xs" :placeholder="t('ai.promptTemplateNamePlaceholder')" />
+                    <div class="flex justify-between mt-0.5">
+                      <p v-if="templateNameTooLong()" class="text-xs text-destructive">{{ t("ai.promptTemplateNameTooLong", { max: PROMPT_TEMPLATE_NAME_MAX }) }}</p>
+                      <p v-else-if="localNameDuplicate()" class="text-xs text-destructive">{{ t("ai.promptTemplateNameExists", { name: templateForm.name.trim() }) }}</p>
+                      <span v-else></span>
+                      <span class="text-xs" :class="templateNameTooLong() ? 'text-destructive' : 'text-muted-foreground'">{{ promptTemplateCharacterCount(templateForm.name) }}/{{ PROMPT_TEMPLATE_NAME_MAX }}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label class="text-xs">{{ t("ai.promptTemplateContent") }}</Label>
+                    <textarea v-model="templateForm.content" class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-xs font-mono resize-y min-h-[80px]" rows="4" :placeholder="t('ai.promptTemplateContentPlaceholder')"></textarea>
+                    <div class="flex justify-between mt-0.5">
+                      <p v-if="templateContentTooLong()" class="text-xs text-destructive">{{ t("ai.promptTemplateTooLong", { max: PROMPT_TEMPLATE_CONTENT_MAX }) }}</p>
+                      <span v-else></span>
+                      <span class="text-xs" :class="templateContentTooLong() ? 'text-destructive' : 'text-muted-foreground'">{{ promptTemplateCharacterCount(templateForm.content) }}/{{ PROMPT_TEMPLATE_CONTENT_MAX }}</span>
+                    </div>
+                  </div>
+                  <div class="flex justify-end gap-2">
+                    <Button type="button" variant="outline" size="sm" @click="closeTemplateForm">{{ t("common.cancel") }}</Button>
+                    <Button type="button" size="sm" :disabled="templateSaveDisabled()" @click="saveTemplateForm">
+                      {{ templateSaving ? t("common.processing") : t("common.save") }}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               <!-- Config Edit View -->
               <div v-else class="space-y-4">
                 <div class="flex items-center justify-between">
@@ -4888,42 +5139,54 @@ onUnmounted(cleanupPreviewEditor);
                     <Label id="mcp-execution-mode-label">{{ t("settings.mcpExecutionMode") }}</Label>
                     <p class="text-xs text-muted-foreground">{{ t("settings.mcpExecutionModeDescription") }}</p>
                   </div>
-                  <fieldset :disabled="mcpPolicyControlsDisabled" :aria-busy="mcpPolicyLoading" aria-labelledby="mcp-execution-mode-label">
-                    <legend class="sr-only">{{ t("settings.mcpExecutionMode") }}</legend>
-                    <div class="grid grid-cols-1 rounded-md bg-muted p-1 sm:grid-cols-3">
-                      <label
-                        :class="[
-                          'flex min-h-10 items-center justify-center rounded px-3 py-2 text-center text-sm font-medium transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
-                          mcpExecutionMode === 'read_only' ? 'bg-background text-foreground shadow-sm dark:bg-input/30' : 'text-muted-foreground',
-                          mcpPolicyControlsDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-foreground',
-                        ]"
-                      >
-                        <input class="sr-only" type="radio" name="mcp-execution-mode" value="read_only" :checked="mcpExecutionMode === 'read_only'" @click="onMcpExecutionModeChange($event, 'read_only')" />
-                        <span>{{ t("settings.mcpExecutionModeReadOnly") }}</span>
-                      </label>
-                      <label
-                        :class="[
-                          'flex min-h-10 items-center justify-center gap-1.5 rounded px-3 py-2 text-center text-sm font-medium transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
-                          mcpExecutionMode === 'safe_write' ? 'bg-background text-foreground shadow-sm dark:bg-input/30' : 'text-muted-foreground',
-                          mcpPolicyControlsDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-foreground',
-                        ]"
-                      >
-                        <input class="sr-only" type="radio" name="mcp-execution-mode" value="safe_write" :checked="mcpExecutionMode === 'safe_write'" @click="onMcpExecutionModeChange($event, 'safe_write')" />
-                        <span>{{ t("settings.mcpExecutionModeSafeWrite") }}</span>
-                        <span class="text-[10px] font-normal text-green-600 dark:text-green-400">{{ t("settings.mcpExecutionModeRecommended") }}</span>
-                      </label>
-                      <label
-                        :class="[
-                          'flex min-h-10 items-center justify-center rounded px-3 py-2 text-center text-sm font-medium transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
-                          mcpExecutionMode === 'high_risk_write' ? 'bg-background text-foreground shadow-sm dark:bg-input/30' : 'text-muted-foreground',
-                          mcpPolicyControlsDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-foreground',
-                        ]"
-                      >
-                        <input class="sr-only" type="radio" name="mcp-execution-mode" value="high_risk_write" :checked="mcpExecutionMode === 'high_risk_write'" @click="onMcpExecutionModeChange($event, 'high_risk_write')" />
-                        <span>{{ t("settings.mcpExecutionModeHighRiskWrite") }}</span>
-                      </label>
-                    </div>
-                  </fieldset>
+                  <div class="grid grid-cols-1 p-1 sm:grid-cols-3 gap-2.5" role="radiogroup" aria-labelledby="mcp-execution-mode-label">
+                    <Button
+                      :disabled="mcpPolicyControlsDisabled"
+                      type="button"
+                      role="radio"
+                      data-mcp-execution-mode="read_only"
+                      :aria-checked="mcpExecutionMode === 'read_only'"
+                      :tabindex="mcpExecutionMode === 'read_only' ? 0 : -1"
+                      variant="outline"
+                      class="settings-choice-card h-auto justify-center border p-3"
+                      :class="mcpExecutionMode === 'read_only' ? 'settings-choice-card--selected border-blue-300 ring-2 ring-blue-300/50' : ''"
+                      @click="onMcpExecutionModeChange('read_only')"
+                      @keydown="onMcpExecutionModeKeydown($event, 'read_only')"
+                    >
+                      <span>{{ t("settings.mcpExecutionModeReadOnly") }}</span>
+                    </Button>
+                    <Button
+                      :disabled="mcpPolicyControlsDisabled"
+                      type="button"
+                      role="radio"
+                      data-mcp-execution-mode="safe_write"
+                      :aria-checked="mcpExecutionMode === 'safe_write'"
+                      :tabindex="mcpExecutionMode === 'safe_write' ? 0 : -1"
+                      variant="outline"
+                      class="settings-choice-card h-auto justify-center border p-3"
+                      :class="mcpExecutionMode === 'safe_write' ? 'settings-choice-card--selected border-blue-300 ring-2 ring-blue-300/50' : ''"
+                      @click="onMcpExecutionModeChange('safe_write')"
+                      @keydown="onMcpExecutionModeKeydown($event, 'safe_write')"
+                    >
+                      <span>{{ t("settings.mcpExecutionModeSafeWrite") }}</span>
+                      <span class="text-[10px] font-normal text-green-600 dark:text-green-400">{{ t("settings.mcpExecutionModeRecommended") }}</span>
+                    </Button>
+                    <Button
+                      :disabled="mcpPolicyControlsDisabled"
+                      type="button"
+                      role="radio"
+                      data-mcp-execution-mode="high_risk_write"
+                      :aria-checked="mcpExecutionMode === 'high_risk_write'"
+                      :tabindex="mcpExecutionMode === 'high_risk_write' ? 0 : -1"
+                      variant="outline"
+                      class="settings-choice-card h-auto justify-center border p-3"
+                      :class="mcpExecutionMode === 'high_risk_write' ? 'settings-choice-card--selected border-blue-300 ring-2 ring-blue-300/50' : ''"
+                      @click="onMcpExecutionModeChange('high_risk_write')"
+                      @keydown="onMcpExecutionModeKeydown($event, 'high_risk_write')"
+                    >
+                      <span>{{ t("settings.mcpExecutionModeHighRiskWrite") }}</span>
+                    </Button>
+                  </div>
                   <!-- Keep every translation in one grid cell so mode changes cannot reflow the capability matrix. -->
                   <div data-mcp-execution-mode-description class="grid text-xs">
                     <p class="col-start-1 row-start-1 text-muted-foreground" :class="mcpExecutionMode === 'read_only' ? 'visible' : 'invisible'">
@@ -5016,8 +5279,8 @@ onUnmounted(cleanupPreviewEditor);
                         {{ t("settings.mcpTraeConfigPath") }}
                       </div>
                       <div class="relative rounded-md border bg-background p-3">
-                        <pre class="overflow-x-auto whitespace-pre text-xs leading-relaxed"><code>{{ mcpJsonRecommendedConfig }}</code></pre>
-                        <Button type="button" variant="outline" size="icon" class="absolute right-2 top-2 h-7 w-7" :title="t('common.copy')" @click="copyMcpText('trae-config', mcpJsonRecommendedConfig)">
+                        <pre class="overflow-x-auto whitespace-pre text-xs leading-relaxed"><code>{{ mcpTraeRecommendedConfig }}</code></pre>
+                        <Button type="button" variant="outline" size="icon" class="absolute right-2 top-2 h-7 w-7" :title="t('common.copy')" @click="copyMcpText('trae-config', mcpTraeRecommendedConfig)">
                           <CheckCircle2 v-if="mcpCopied === 'trae-config'" class="h-3.5 w-3.5 text-green-500" />
                           <Copy v-else class="h-3.5 w-3.5" />
                         </Button>
@@ -5386,6 +5649,13 @@ onUnmounted(cleanupPreviewEditor);
 
     <!-- AI Config Delete Confirmation -->
     <DangerConfirmDialog v-model:open="aiDeleteConfirmOpen" :title="t('ai.deleteConfigTitle')" :message="t('ai.deleteConfigConfirm')" :confirm-label="t('common.delete')" @confirm="aiConfirmDeleteConfig" />
+    <DangerConfirmDialog
+      v-model:open="templateDeleteConfirmOpen"
+      :title="t('ai.promptTemplateDeleteTitle')"
+      :message="t('ai.promptTemplateDeleteConfirm', { name: templateDeleteConfirm?.name ?? '' })"
+      :confirm-label="t('common.delete')"
+      @confirm="templateDeleteConfirm && confirmDeleteTemplate(templateDeleteConfirm)"
+    />
   </component>
 </template>
 

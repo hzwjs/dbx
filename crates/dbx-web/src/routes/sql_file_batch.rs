@@ -28,16 +28,16 @@ pub async fn create_sql_file_batch(
         .storage
         .load_connections()
         .await
-        .map_err(AppError)?
+        .map_err(AppError::from)?
         .into_iter()
         .map(|connection| connection.id)
         .collect();
     if let Some(connection_id) =
         request.connection_ids.iter().find(|connection_id| !saved_connection_ids.contains(*connection_id))
     {
-        return Err(AppError(format!("SQL file batch connection '{connection_id}' is not a saved connection")));
+        return Err(AppError::from(format!("SQL file batch connection '{connection_id}' is not a saved connection")));
     }
-    let snapshot = state.sql_file_batches.create(request).await.map_err(AppError)?;
+    let snapshot = state.sql_file_batches.create(request).await.map_err(AppError::from)?;
     let registry = state.sql_file_batches.clone();
     let batch_id = snapshot.batch_id.clone();
     let executor = Arc::new(WebSqlFileBatchExecutor { state });
@@ -53,23 +53,15 @@ pub async fn get_sql_file_batch(
     State(state): State<Arc<WebState>>,
     AxumPath(batch_id): AxumPath<String>,
 ) -> Result<Json<SqlFileBatchSnapshot>, AppError> {
-    state
-        .sql_file_batches
-        .get(&batch_id)
-        .await
-        .map(Json)
-        .ok_or_else(|| AppError("SQL file batch not found".to_string()))
+    state.sql_file_batches.get(&batch_id).await.map(Json).ok_or_else(|| AppError::from("SQL file batch not found"))
 }
 
 pub async fn sql_file_batch_events(
     State(state): State<Arc<WebState>>,
     AxumPath(batch_id): AxumPath<String>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
-    let (snapshot, mut receiver) = state
-        .sql_file_batches
-        .subscribe(&batch_id)
-        .await
-        .ok_or_else(|| AppError("SQL file batch not found".to_string()))?;
+    let (snapshot, mut receiver) =
+        state.sql_file_batches.subscribe(&batch_id).await.ok_or_else(|| AppError::from("SQL file batch not found"))?;
     let initial = stream::once(async move { Ok(Event::default().data(serde_json::to_string(&snapshot).unwrap())) });
     let updates = async_stream::stream! {
         while let Some(snapshot) = receive_next_batch_snapshot(&mut receiver).await {
@@ -173,7 +165,7 @@ mod tests {
             get_sql_file_batch(State(created.state.clone()), AxumPath(created.snapshot.batch_id.clone())).await;
         let Json(fetched) = match fetched {
             Ok(snapshot) => snapshot,
-            Err(error) => panic!("{}", error.0),
+            Err(error) => panic!("{}", error.message),
         };
         assert_eq!(listed, vec![created.snapshot.clone()]);
         assert_eq!(fetched, created.snapshot);
@@ -215,7 +207,7 @@ mod tests {
         .await;
         let Json(snapshot) = match snapshot {
             Ok(snapshot) => snapshot,
-            Err(error) => panic!("{}", error.0),
+            Err(error) => panic!("{}", error.message),
         };
 
         assert_eq!(
@@ -267,7 +259,7 @@ mod tests {
         let snapshot = create_test_batch_from_path(state.clone(), &alias_path.to_string_lossy()).await;
         let Json(snapshot) = match snapshot {
             Ok(snapshot) => snapshot,
-            Err(error) => panic!("{}", error.0),
+            Err(error) => panic!("{}", error.message),
         };
         assert_eq!(
             state.sql_file_batches.test_file_path(&snapshot.batch_id).await.unwrap(),

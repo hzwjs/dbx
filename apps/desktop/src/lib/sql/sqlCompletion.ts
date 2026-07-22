@@ -724,6 +724,44 @@ function getFunctionDescriptions(t?: SqlCompletionTranslations): Map<string, str
     ["DATE_SUB", d.DATE_SUB || "Subtracts from a date"],
     ["EXTRACT", d.EXTRACT || "Extracts a part from a date"],
     ["NOW", d.NOW || "Returns the current date and time"],
+    ["CURRENT_DATE", d.CURRENT_DATE || "Returns the current date"],
+    ["CURRENT_TIME", d.CURRENT_TIME || "Returns the current time"],
+    ["CURRENT_TIMESTAMP", d.CURRENT_TIMESTAMP || "Returns the current date and time"],
+    ["CURDATE", d.CURDATE || "Returns the current date"],
+    ["CURTIME", d.CURTIME || "Returns the current time"],
+    ["LOCALTIME", d.LOCALTIME || "Returns the current local time"],
+    ["LOCALTIMESTAMP", d.LOCALTIMESTAMP || "Returns the current local date and time"],
+    ["UTC_DATE", d.UTC_DATE || "Returns the current UTC date"],
+    ["UTC_TIME", d.UTC_TIME || "Returns the current UTC time"],
+    ["UTC_TIMESTAMP", d.UTC_TIMESTAMP || "Returns the current UTC date and time"],
+    ["SYSDATE", d.SYSDATE || "Returns the current date and time"],
+    ["DATE", d.DATE || "Extracts the date part"],
+    ["TIME", d.TIME || "Extracts the time part"],
+    ["TIMESTAMPDIFF", d.TIMESTAMPDIFF || "Returns the difference between two datetimes"],
+    ["YEAR", d.YEAR || "Extracts the year"],
+    ["MONTH", d.MONTH || "Extracts the month"],
+    ["DAY", d.DAY || "Extracts the day"],
+    ["HOUR", d.HOUR || "Extracts the hour"],
+    ["MINUTE", d.MINUTE || "Extracts the minute"],
+    ["SECOND", d.SECOND || "Extracts the second"],
+    ["DAYOFWEEK", d.DAYOFWEEK || "Returns the weekday index"],
+    ["DAYOFYEAR", d.DAYOFYEAR || "Returns the day of year"],
+    ["LAST_DAY", d.LAST_DAY || "Returns the last day of the month"],
+    ["STR_TO_DATE", d.STR_TO_DATE || "Converts a string to a date"],
+    ["IF", d.IF || "Returns a value based on a condition"],
+    ["LEFT", d.LEFT || "Returns the leftmost characters"],
+    ["RIGHT", d.RIGHT || "Returns the rightmost characters"],
+    ["SUBSTRING_INDEX", d.SUBSTRING_INDEX || "Returns a substring before a delimiter count"],
+    ["CHAR_LENGTH", d.CHAR_LENGTH || "Returns the character length"],
+    ["INSTR", d.INSTR || "Returns the position of a substring"],
+    ["LOCATE", d.LOCATE || "Returns the position of a substring"],
+    ["LPAD", d.LPAD || "Left-pads a string to a length"],
+    ["RPAD", d.RPAD || "Right-pads a string to a length"],
+    ["FIND_IN_SET", d.FIND_IN_SET || "Returns the index in a comma-separated list"],
+    ["RAND", d.RAND || "Returns a random floating-point value"],
+    ["MD5", d.MD5 || "Returns the MD5 hash"],
+    ["SHA1", d.SHA1 || "Returns the SHA1 hash"],
+    ["SHA2", d.SHA2 || "Returns the SHA2 hash"],
     ["ROUND", d.ROUND || "Rounds to the specified precision"],
     ["FLOOR", d.FLOOR || "Rounds down"],
     ["CEIL", d.CEIL || "Rounds up"],
@@ -890,8 +928,8 @@ const SQL_FUNCTION_SIGNATURES = new Map<string, string[]>([
   ["DATE_FORMAT", ["date", "format"]],
   ["DATEDIFF", ["date1", "date2"]],
   ["TIMESTAMPDIFF", ["unit", "datetime_expr1", "datetime_expr2"]],
-  ["DATE_ADD", ["date", "interval"]],
-  ["DATE_SUB", ["date", "interval"]],
+  ["DATE_ADD", ["date", "INTERVAL expr unit"]],
+  ["DATE_SUB", ["date", "INTERVAL expr unit"]],
   ["EXTRACT", ["unit", "date"]],
   ["YEAR", ["date"]],
   ["MONTH", ["date"]],
@@ -967,12 +1005,57 @@ const MYSQL_FUNCTION_SIGNATURES = new Map<string, string[]>([
   ["FROM_UNIXTIME", ["unix_timestamp"]],
   ["UNIX_TIMESTAMP", []],
   ["SYSDATE", []],
+  ["CURRENT_DATE", []],
+  ["CURRENT_TIME", []],
+  ["CURRENT_TIMESTAMP", []],
+  ["CURDATE", []],
+  ["CURTIME", []],
+  ["LOCALTIME", []],
+  ["LOCALTIMESTAMP", []],
+  ["UTC_DATE", []],
+  ["UTC_TIME", []],
+  ["UTC_TIMESTAMP", []],
+  ["DATE", ["expression"]],
+  ["TIME", ["expression"]],
+  ["DATE_ADD", ["date", "INTERVAL expr unit"]],
+  ["DATE_SUB", ["date", "INTERVAL expr unit"]],
+  ["DATEDIFF", ["date1", "date2"]],
+  ["TIMESTAMPDIFF", ["unit", "datetime_expr1", "datetime_expr2"]],
+  ["YEAR", ["date"]],
+  ["MONTH", ["date"]],
+  ["DAY", ["date"]],
+  ["HOUR", ["datetime"]],
+  ["MINUTE", ["datetime"]],
+  ["SECOND", ["datetime"]],
+  ["DAYOFWEEK", ["date"]],
+  ["DAYOFYEAR", ["date"]],
+  ["LAST_DAY", ["date"]],
+  ["STR_TO_DATE", ["string", "format"]],
+  ["IFNULL", ["expression", "fallback"]],
+  ["IF", ["condition", "true_value", "false_value"]],
+  ["CONCAT_WS", ["separator", "...values"]],
+  ["LEFT", ["string", "length"]],
+  ["RIGHT", ["string", "length"]],
+  ["SUBSTRING_INDEX", ["string", "delimiter", "count"]],
+  ["CHAR_LENGTH", ["string"]],
+  ["INSTR", ["string", "substring"]],
+  ["LOCATE", ["substring", "string"]],
+  ["LPAD", ["string", "length", "pad"]],
+  ["RPAD", ["string", "length", "pad"]],
+  ["FIND_IN_SET", ["string", "string_list"]],
+  ["RAND", []],
+  ["MD5", ["string"]],
+  ["SHA1", ["string"]],
+  ["SHA2", ["string", "bit_length"]],
   ["JSON_EXTRACT", ["json", "path"]],
   ["JSON_UNQUOTE", ["json"]],
   ["GROUP_CONCAT", ["expression"]],
   ["UUID", []],
   ["NOW", []],
 ]);
+
+/** Keywords that may also exist as built-in functions; keep both completion entries. */
+const DUAL_ROLE_SQL_KEYWORDS = new Set(["LEFT", "RIGHT", "IF"]);
 
 const SQLITE_FUNCTION_SIGNATURES = new Map<string, string[]>([
   ["JSON_EXTRACT", ["json", "path"]],
@@ -1051,6 +1134,11 @@ const DATABASE_FUNCTION_SIGNATURES: Partial<Record<DatabaseType, Map<string, str
   sqlserver: SQLSERVER_FUNCTION_SIGNATURES,
   manticoresearch: MANTICORESEARCH_FUNCTION_SIGNATURES,
 };
+
+const MYSQL_FUNCTION_APPLY_TEMPLATES = new Map<string, string>([
+  ["DATE_ADD", "DATE_ADD(${date}, INTERVAL ${expr} ${unit})"],
+  ["DATE_SUB", "DATE_SUB(${date}, INTERVAL ${expr} ${unit})"],
+]);
 
 const COMMON_SQL_FUNCTION_NAMES = new Set([
   "COUNT",
@@ -1265,6 +1353,7 @@ export interface SqlCompletionContext {
   autoAliasTableCompletions: boolean;
   tableAliasAfterCursor?: boolean;
   contextKind: SqlCompletionContextKind;
+  dataTypeContext: boolean;
 }
 
 export interface SqlFunctionSignatureHelp {
@@ -1356,7 +1445,7 @@ class SqlCompletionProvider {
         this.items.push(...buildSnippetItems(context.prefix, snippets, this.input.keywordCase));
       }
       if (!preferReferencedColumns || context.suggestRoutines) {
-        const functionItems = buildFunctionSnippetItems(context.prefix, getFunctionDescriptions(this.t), this.databaseType);
+        const functionItems = context.dataTypeContext ? [] : buildFunctionSnippetItems(context.prefix, getFunctionDescriptions(this.t), this.databaseType);
         this.items.push(...(preferReferencedColumns ? functionItems.filter((item) => item.label.toLowerCase().startsWith(context.prefix.toLowerCase())) : functionItems));
         if (isOracleLikeDatabase(this.databaseType)) {
           this.items.push(...buildOracleSystemValueItems(context.prefix, this.input.keywordCase));
@@ -1393,6 +1482,8 @@ class SqlCompletionProvider {
     if (context.suggestKeywords && !context.exclusiveRoutineSuggestions && !pendingJoinKeyword) {
       this.items.push(...buildJoinModifierKeywordItems(context.prefix, this.input.keywordCase));
       this.items.push(...buildKeywordItems(context.prefix, context, this.databaseType, this.input.keywordCase));
+    } else if (shouldOfferKeywordPrefixContinuations(context, pendingJoinKeyword)) {
+      this.items.push(...buildKeywordPrefixContinuationItems(context.prefix, context, this.databaseType, this.input.keywordCase));
     }
 
     if (!context.exclusiveTableSuggestions && context.suggestColumns) {
@@ -1843,6 +1934,7 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
   const suggestRoutines = inCallRoutineContext || oracleTableFunctionContext || inPotentialPackageMemberContext || (!exclusiveTableSuggestions && !exclusiveColumnSuggestions && !insertInfo && !updateInfo?.inSetClause && prefix.length >= 2);
 
   const statementKind = detectStatementKind(beforeCursor || fullStatement);
+  const dataTypeContext = isCreateTableColumnTypeContext(beforeToken);
   const preferredKeywords = qualifier ? [] : preferredKeywordsForCompletion(beforeCursor, beforeToken, selectListColumnContext, exclusiveTableSuggestions, updateInfo, deleteInfo);
   const contextKind = detectCompletionContextKind({
     qualifier,
@@ -1890,7 +1982,28 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
     autoAliasTableCompletions,
     tableAliasAfterCursor,
     contextKind,
+    dataTypeContext,
   };
+}
+
+function isCreateTableColumnTypeContext(beforeToken: string): boolean {
+  const cleaned = stripSqlLiterals(beforeToken);
+  if (!/^\s*create\s+table\b/i.test(cleaned)) return false;
+
+  const bodyStart = cleaned.indexOf("(");
+  if (bodyStart < 0) return false;
+
+  let depth = 0;
+  let segmentStart = bodyStart + 1;
+  for (let index = bodyStart + 1; index < cleaned.length; index += 1) {
+    const char = cleaned[index];
+    if (char === "(") depth += 1;
+    else if (char === ")") depth = Math.max(0, depth - 1);
+    else if (char === "," && depth === 0) segmentStart = index + 1;
+  }
+
+  const segment = cleaned.slice(segmentStart).trim();
+  return /^(?:[A-Za-z_][\w$]*|`[^`]+`|"[^"]+"|\[[^\]]+\])$/.test(segment);
 }
 
 function removeActiveTableCompletionReference(referencedTables: SqlCompletionReferencedTable[], prefix: string, qualifier?: string): SqlCompletionReferencedTable[] {
@@ -2775,7 +2888,7 @@ function unquoteIdentifier(value: string): string {
   return value;
 }
 
-function quoteSqlIdentifier(identifier: string, dialect?: "mysql" | "postgres" | "sqlserver"): string {
+export function quoteSqlIdentifier(identifier: string, dialect?: "mysql" | "postgres" | "sqlserver"): string {
   if (dialect !== "postgres" || !requiresPostgresIdentifierQuote(identifier)) return identifier;
   return `"${identifier.replaceAll('"', '""')}"`;
 }
@@ -3403,8 +3516,7 @@ function buildAliasCandidates(tableName: string): string[] {
 
   if (parts.length > 1) {
     const initials = parts.map((part) => part[0]).join("");
-    if (initials.length >= 2) candidates.push(initials.slice(0, 2));
-    if (initials.length >= 3) candidates.push(initials.slice(0, 3));
+    if (initials.length >= 2) candidates.push(initials);
     candidates.push(parts[0].slice(0, 2), parts[0].slice(0, 3));
   } else {
     const name = parts[0] ?? tableName.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -4016,7 +4128,7 @@ function buildFunctionSnippetItems(prefix: string, functionDescriptions: Map<str
       label: name,
       type: "function" as const,
       detail: functionDescriptions.get(name) ?? "function",
-      apply: `${name}(${paramStr})`,
+      apply: (databaseType === "mysql" ? MYSQL_FUNCTION_APPLY_TEMPLATES.get(name) : undefined) ?? `${name}(${paramStr})`,
       boost: computeBoost(name, prefix) + 300,
     });
   }
@@ -4131,7 +4243,7 @@ function buildKeywordItems(prefix: string, context: SqlCompletionContext, databa
 
   return activeSqlKeywords(databaseType)
     .filter((keyword) => {
-      if (functionSignatures.has(keyword)) return false;
+      if (functionSignatures.has(keyword) && !DATA_TYPE_KEYWORDS.has(keyword) && !DUAL_ROLE_SQL_KEYWORDS.has(keyword)) return false;
       if (WINDOW_FUNCTIONS.has(keyword)) return false;
       if (!matchesPrefix(keyword, prefix)) return false;
       if (!showDdl && isDml && (DDL_ONLY_KEYWORDS.has(keyword) || DATA_TYPE_KEYWORDS.has(keyword))) return false;
@@ -4146,6 +4258,18 @@ function buildKeywordItems(prefix: string, context: SqlCompletionContext, databa
         boost: base + freqBoost,
       };
     });
+}
+
+function shouldOfferKeywordPrefixContinuations(context: SqlCompletionContext, pendingJoinKeyword: boolean): boolean {
+  return !!context.prefix && !pendingJoinKeyword && !context.qualifier && !context.exclusiveTableSuggestions && !context.exclusiveColumnSuggestions;
+}
+
+function buildKeywordPrefixContinuationItems(prefix: string, context: SqlCompletionContext, databaseType?: DatabaseType, keywordCase?: SqlKeywordCase): SqlCompletionItem[] {
+  const normalizedPrefix = prefix.toLowerCase();
+  return buildKeywordItems(prefix, context, databaseType, keywordCase).filter((item) => {
+    const normalizedLabel = item.label.toLowerCase();
+    return normalizedLabel.length > normalizedPrefix.length && normalizedLabel.startsWith(normalizedPrefix);
+  });
 }
 
 function matchesPrefix(candidate: string, prefix: string): boolean {

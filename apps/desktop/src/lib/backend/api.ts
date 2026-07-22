@@ -287,6 +287,13 @@ export const saveAiConversation = forward("saveAiConversation");
 export const loadAiConversations = forward("loadAiConversations");
 export const deleteAiConversation = forward("deleteAiConversation");
 
+// Prompt Templates
+export const loadPromptTemplates = forward("loadPromptTemplates");
+export const savePromptTemplate = forward("savePromptTemplate");
+export const deletePromptTemplate = forward("deletePromptTemplate");
+export const getAiGlobalCustomInstructions = forward("getAiGlobalCustomInstructions");
+export const setAiGlobalCustomInstructions = forward("setAiGlobalCustomInstructions");
+
 // System
 export const listSystemFonts = forward("listSystemFonts");
 export const listSshConfigHosts = forward("listSshConfigHosts");
@@ -458,6 +465,7 @@ export const vectorGetCollectionDetail = forward("vectorGetCollectionDetail");
 export const mongoCreateDatabase = forward("mongoCreateDatabase");
 export const mongoDropDatabase = forward("mongoDropDatabase");
 export const mongoDropCollection = forward("mongoDropCollection");
+export const mongoRenameCollection = forward("mongoRenameCollection");
 export const documentFindDocuments = forward("documentFindDocuments");
 export const mongoFindDocuments = forward("mongoFindDocuments");
 export const mongoParseShellCommand = forward("mongoParseShellCommand");
@@ -489,6 +497,8 @@ export const vectorListCollections = forward("vectorListCollections");
 // History
 export const saveHistory = forward("saveHistory");
 export const loadHistory = forward("loadHistory");
+export const searchHistory = forward("searchHistory");
+export const loadHistoryConnectionOptions = forward("loadHistoryConnectionOptions");
 export const loadRedisHistory = forward("loadRedisHistory");
 export const clearHistory = forward("clearHistory");
 export const clearRedisHistory = forward("clearRedisHistory");
@@ -524,6 +534,7 @@ export type {
   AiModelInfo,
   AiChatMessage,
   AiConversation,
+  PromptTemplate,
   AgentDriverInfo,
   DriverStoreUsage,
   DriverStoreUsageItem,
@@ -578,6 +589,12 @@ export type {
   KvDeleteResponse,
   MongoDocumentResult,
   HistoryEntry,
+  HistoryConnectionFilter,
+  HistoryDatabaseFilter,
+  HistoryCursor,
+  HistorySearchRequest,
+  HistorySearchResult,
+  HistoryConnectionOption,
   SqlFileStatus,
   SqlFileRequest,
   SqlFilePreview,

@@ -9,6 +9,7 @@ use dbx_core::sql;
 use dbx_core::sql::{SqlFileProgress, SqlFileRequest, SqlFileStatus};
 use dbx_core::sql_file_import::{
     execute_sql_file_content, sql_file_error_progress, sql_file_progress as build_sql_file_progress,
+    SqlFileProgressEmitter,
 };
 use futures::stream::Stream;
 use serde::Deserialize;
@@ -35,17 +36,17 @@ pub async fn preview_sql_file(
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let tmp_dir = state.data_dir.join("tmp");
-    std::fs::create_dir_all(&tmp_dir).map_err(|e| AppError(e.to_string()))?;
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| AppError::from(e.to_string()))?;
 
-    if let Some(field) = multipart.next_field().await.map_err(|e| AppError(e.to_string()))? {
+    if let Some(field) = multipart.next_field().await.map_err(|e| AppError::from(e.to_string()))? {
         let file_name = field.file_name().unwrap_or("upload.sql").to_string();
-        let data = field.bytes().await.map_err(|e| AppError(e.to_string()))?;
+        let data = field.bytes().await.map_err(|e| AppError::from(e.to_string()))?;
 
         let file_path = safe_uploaded_sql_path(&tmp_dir, &file_name)?;
-        std::fs::write(&file_path, &data).map_err(|e| AppError(e.to_string()))?;
+        std::fs::write(&file_path, &data).map_err(|e| AppError::from(e.to_string()))?;
 
         let size_bytes = data.len() as u64;
-        let content = sql::decode_sql_file_bytes(&data).map_err(AppError)?;
+        let content = sql::decode_sql_file_bytes(&data).map_err(AppError::from)?;
         let preview: String = content.chars().take(20_000).collect();
 
         return Ok(Json(serde_json::json!({
@@ -57,7 +58,7 @@ pub async fn preview_sql_file(
         })));
     }
 
-    Err(AppError("No file uploaded".to_string()))
+    Err(AppError::from("No file uploaded".to_string()))
 }
 
 pub async fn execute_sql_file(
@@ -68,7 +69,7 @@ pub async fn execute_sql_file(
 
     // Fast-fail: reject early if the connection is read-only (individual statements are also checked in do_execute)
     if let Some(name) = dbx_core::query::connection_readonly_name(&state.app, &req.connection_id).await {
-        return Err(AppError(format!(
+        return Err(AppError::from(format!(
             "Read-only mode: connection '{}' has read-only protection enabled. SQL file execution blocked.",
             name
         )));
@@ -81,7 +82,7 @@ pub async fn execute_sql_file(
     {
         let mut executions = state.sql_file_executions.write().await;
         if executions.contains_key(&execution_id) {
-            return Err(AppError(format!("SQL file execution '{execution_id}' already exists")));
+            return Err(AppError::from(format!("SQL file execution '{execution_id}' already exists")));
         }
         executions.insert(execution_id.clone(), token.clone());
     }
@@ -107,20 +108,32 @@ pub(crate) async fn run_validated_sql_file_request(
     data_dir: &Path,
     request: &SqlFileRequest,
     token: CancellationToken,
-    progress: impl Fn(SqlFileProgress) + Send + Sync,
+    progress: impl FnMut(SqlFileProgress) + Send,
 ) {
     let started_at = std::time::Instant::now();
+    let mut progress_emitter = SqlFileProgressEmitter::new(progress);
+    progress_emitter.emit(build_sql_file_progress(
+        &request.execution_id,
+        SqlFileStatus::Started,
+        0,
+        0,
+        0,
+        0,
+        started_at,
+        "",
+        None,
+    ));
     let file_path = match validated_uploaded_sql_path(data_dir, &request.file_path) {
         Ok(path) => path,
         Err(error) => {
-            progress(sql_file_error_progress(&request.execution_id, started_at, error.0));
+            progress_emitter.emit(sql_file_error_progress(&request.execution_id, started_at, error.message));
             return;
         }
     };
 
     match std::fs::metadata(&file_path) {
         Ok(meta) if meta.len() > 200 * 1024 * 1024 => {
-            progress(sql_file_error_progress(
+            progress_emitter.emit(sql_file_error_progress(
                 &request.execution_id,
                 started_at,
                 format!("File too large: {} bytes (max {} bytes)", meta.len(), 200 * 1024 * 1024),
@@ -128,7 +141,7 @@ pub(crate) async fn run_validated_sql_file_request(
             return;
         }
         Err(error) => {
-            progress(sql_file_error_progress(&request.execution_id, started_at, error.to_string()));
+            progress_emitter.emit(sql_file_error_progress(&request.execution_id, started_at, error.to_string()));
             return;
         }
         _ => {}
@@ -140,12 +153,10 @@ pub(crate) async fn run_validated_sql_file_request(
     }) {
         Ok(content) => content,
         Err(error) => {
-            progress(sql_file_error_progress(&request.execution_id, started_at, error.to_string()));
+            progress_emitter.emit(sql_file_error_progress(&request.execution_id, started_at, error.to_string()));
             return;
         }
     };
-
-    progress(build_sql_file_progress(&request.execution_id, SqlFileStatus::Started, 0, 0, 0, 0, started_at, "", None));
 
     let terminal_observed = Arc::new(AtomicBool::new(false));
     let observed_by_core = terminal_observed.clone();
@@ -153,12 +164,12 @@ pub(crate) async fn run_validated_sql_file_request(
         if matches!(update.status, SqlFileStatus::Done | SqlFileStatus::Error | SqlFileStatus::Cancelled) {
             observed_by_core.store(true, Ordering::Relaxed);
         }
-        progress(update);
+        progress_emitter.emit(update);
     })
     .await;
     if let Err(error) = result {
         if !terminal_observed.load(Ordering::Relaxed) {
-            progress(sql_file_error_progress(&request.execution_id, started_at, error));
+            progress_emitter.emit(sql_file_error_progress(&request.execution_id, started_at, error));
         }
     }
 }
@@ -177,23 +188,23 @@ async fn cleanup_sql_file_execution(state: &WebState, execution_id: &str) {
 fn safe_uploaded_sql_path(tmp_dir: &Path, file_name: &str) -> Result<PathBuf, AppError> {
     let base_name = file_name.rsplit(['/', '\\']).find(|part| !part.is_empty()).unwrap_or("upload.sql").trim();
     if base_name.is_empty() || base_name == "." || base_name == ".." {
-        return Err(AppError("Invalid SQL file name".to_string()));
+        return Err(AppError::from("Invalid SQL file name".to_string()));
     }
     let upload_dir = tmp_dir.join(uuid::Uuid::new_v4().to_string());
-    std::fs::create_dir_all(&upload_dir).map_err(|error| AppError(error.to_string()))?;
+    std::fs::create_dir_all(&upload_dir).map_err(|error| AppError::from(error.to_string()))?;
     Ok(upload_dir.join(base_name))
 }
 
 pub(crate) fn validated_uploaded_sql_path(data_dir: &Path, file_path: &str) -> Result<PathBuf, AppError> {
     let path = PathBuf::from(file_path);
     if !path.is_absolute() {
-        return Err(AppError("File path must be absolute".to_string()));
+        return Err(AppError::from("File path must be absolute".to_string()));
     }
 
-    let tmp_dir = data_dir.join("tmp").canonicalize().map_err(|e| AppError(e.to_string()))?;
-    let canonical_path = path.canonicalize().map_err(|e| AppError(e.to_string()))?;
+    let tmp_dir = data_dir.join("tmp").canonicalize().map_err(|e| AppError::from(e.to_string()))?;
+    let canonical_path = path.canonicalize().map_err(|e| AppError::from(e.to_string()))?;
     if !canonical_path.starts_with(&tmp_dir) {
-        return Err(AppError("File path must be inside the uploaded SQL directory".to_string()));
+        return Err(AppError::from("File path must be inside the uploaded SQL directory".to_string()));
     }
     Ok(canonical_path)
 }
@@ -203,10 +214,10 @@ pub async fn sql_file_progress(
     AxumPath(execution_id): AxumPath<String>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, AppError> {
     let channels = state.sse_channels.read().await;
-    let tx = channels.get(&execution_id).ok_or_else(|| AppError("Execution not found".to_string()))?;
+    let tx = channels.get(&execution_id).ok_or_else(|| AppError::from("Execution not found".to_string()))?;
     let rx = tx.subscribe();
     drop(channels);
-    Ok(crate::sse::sse_from_channel(rx))
+    Ok(crate::sse::sse_from_lossy_channel(rx))
 }
 
 pub async fn cancel_sql_file(
@@ -241,7 +252,7 @@ mod tests {
 
         let path = match safe_uploaded_sql_path(&tmp_dir, "../outside.sql") {
             Ok(path) => path,
-            Err(error) => panic!("{}", error.0),
+            Err(error) => panic!("{}", error.message),
         };
 
         assert_eq!(path.parent().and_then(|parent| parent.parent()), Some(tmp_dir.as_path()));
@@ -255,9 +266,9 @@ mod tests {
         let tmp_dir = data_dir.join("tmp");
         std::fs::create_dir_all(&tmp_dir).unwrap();
 
-        let first = safe_uploaded_sql_path(&tmp_dir, "seed.sql").unwrap_or_else(|error| panic!("{}", error.0));
+        let first = safe_uploaded_sql_path(&tmp_dir, "seed.sql").unwrap_or_else(|error| panic!("{}", error.message));
         std::fs::write(&first, "select 'first';").unwrap();
-        let second = safe_uploaded_sql_path(&tmp_dir, "seed.sql").unwrap_or_else(|error| panic!("{}", error.0));
+        let second = safe_uploaded_sql_path(&tmp_dir, "seed.sql").unwrap_or_else(|error| panic!("{}", error.message));
         std::fs::write(&second, "select 'second';").unwrap();
 
         assert_ne!(first, second);
