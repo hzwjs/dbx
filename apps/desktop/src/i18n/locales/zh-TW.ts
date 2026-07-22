@@ -2531,6 +2531,8 @@ export default withEnglishFallback({
     redisCommandMessage: "此 Redis 命令可能會修改資料，且無法自動復原，確認要繼續嗎？",
     suppressFuturePrompts: "之後執行危險 SQL 不再提示",
     wrapLines: "切換自動換行",
+    copyFullText: "複製完整內容",
+    previewTruncated: "預覽已截斷：省略 {lines} 行、{characters} 個字元。複製仍會包含完整內容。",
     deleteMessage: "此刪除操作可能不可逆，確認要繼續嗎？",
     deleteConfirm: "確認刪除",
     deleteRowMessage: "此列將被標記為刪除，儲存後會從資料庫刪除，確認要繼續嗎？",

@@ -2713,6 +2713,8 @@ export default withEnglishFallback({
     redisCommandMessage: "このRedisコマンドはデータを変更し、自動的に元に戻せない可能性があります。続行しますか？",
     suppressFuturePrompts: "危険なSQLの確認を今後表示しない",
     wrapLines: "折り返し表示を切り替え",
+    copyFullText: "全文をコピー",
+    previewTruncated: "プレビューを省略しました: {lines} 行、{characters} 文字を省略。コピーには全文が含まれます。",
     deleteMessage: "この削除操作は元に戻せない可能性があります。続行しますか？",
     deleteConfirm: "削除を確認",
     deleteRowMessage: "この行は削除対象としてマークされ、保存後にデータベースから削除されます。続行しますか？",

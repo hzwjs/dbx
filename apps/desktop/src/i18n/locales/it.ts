@@ -2712,6 +2712,8 @@ export default withEnglishFallback({
     redisCommandMessage: "Questo comando Redis può modificare i dati e non può essere annullato automaticamente. Continuare?",
     suppressFuturePrompts: "Non chiedere più per SQL pericolosi",
     wrapLines: "Attiva/disattiva ritorno a capo",
+    copyFullText: "Copia testo completo",
+    previewTruncated: "Anteprima troncata: omesse {lines} righe e {characters} caratteri. La copia include il testo completo.",
     deleteMessage: "Questa operazione di eliminazione potrebbe essere irreversibile. Continuare?",
     deleteConfirm: "Conferma Eliminazione",
     deleteRowMessage: "Questa riga verrà contrassegnata per l'eliminazione e rimossa dal database dopo il salvataggio. Continuare?",

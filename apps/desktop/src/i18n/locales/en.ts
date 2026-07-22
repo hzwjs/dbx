@@ -2860,6 +2860,8 @@ export default {
     redisCommandMessage: "This Redis command may modify data and cannot be undone automatically. Continue?",
     suppressFuturePrompts: "Do not ask again for dangerous SQL",
     wrapLines: "Toggle word wrap",
+    copyFullText: "Copy full text",
+    previewTruncated: "Preview truncated: {characters} characters across {lines} lines omitted. Copy still includes the full text.",
     deleteMessage: "This delete operation may be irreversible. Continue?",
     deleteConfirm: "Confirm Delete",
     deleteRowMessage: "This row will be marked for deletion and removed from the database after saving. Continue?",
