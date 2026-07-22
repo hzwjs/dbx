@@ -10,6 +10,8 @@ export interface PlainConfigPayload {
   format: "dbx-config";
   version: 1;
   connections: unknown[];
+  layout: unknown;
+  tunnelProfiles: unknown[];
 }
 
 const PBKDF2_ITERATIONS = 100_000;

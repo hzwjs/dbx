@@ -5038,33 +5038,50 @@ export const useConnectionStore = defineStore("connection", () => {
     await refreshNodes(treeNodes.value);
   }
 
-  async function exportConnectionsToFile(passphrase: string) {
-    const { encryptConfig } = await import("@/lib/backend/configCrypto");
+  async function buildConfigExportData() {
     const tunnelProfileStore = useTunnelProfileStore();
     await tunnelProfileStore.init();
-    const exportData = { connections: connections.value, layout: sidebarLayout.value, tunnelProfiles: tunnelProfileStore.profiles };
-    const json = JSON.stringify(exportData);
-    const payload = await encryptConfig(json, passphrase);
-    const content = JSON.stringify(payload, null, 2);
+    return {
+      connections: connections.value,
+      layout: sidebarLayout.value,
+      tunnelProfiles: tunnelProfileStore.profiles,
+    };
+  }
 
+  async function downloadConfigExport(content: string, fileName: string) {
     if (isTauriRuntime()) {
       const { save } = await import("@tauri-apps/plugin-dialog");
       const { writeTextFile } = await import("@tauri-apps/plugin-fs");
       const path = await save({
         filters: [{ name: "JSON", extensions: ["json"] }],
-        defaultPath: "dbx-connections.json",
+        defaultPath: fileName,
       });
       if (!path) return;
       await writeTextFile(path, content);
-    } else {
-      const blob = new Blob([content], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "dbx-connections.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      return;
     }
+
+    const blob = new Blob([content], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportPlainConnectionsToFile() {
+    if (isTauriRuntime()) throw new Error("Plain config export is only available in the Web version");
+    const content = JSON.stringify({ format: "dbx-config", version: 1, ...(await buildConfigExportData()) }, null, 2);
+    await downloadConfigExport(content, "dbx-connections.json");
+  }
+
+  async function exportConnectionsToFile(passphrase: string) {
+    const { encryptConfig } = await import("@/lib/backend/configCrypto");
+    const json = JSON.stringify(await buildConfigExportData());
+    const payload = await encryptConfig(json, passphrase);
+    const content = JSON.stringify(payload, null, 2);
+    await downloadConfigExport(content, "dbx-connections.json");
   }
 
   function bytesToBase64(bytes: Uint8Array) {
@@ -5257,6 +5274,12 @@ export const useConnectionStore = defineStore("connection", () => {
           imported = parsed;
         } else if (parsed.format === "dbx-config" && Array.isArray(parsed.connections)) {
           imported = parsed.connections;
+          if (parsed.layout?.groups && parsed.layout?.order) {
+            importedLayout = parsed.layout;
+          }
+          if (Array.isArray(parsed.tunnelProfiles)) {
+            importedTunnelProfiles = parsed.tunnelProfiles;
+          }
         } else if (parsed.connections && Array.isArray(parsed.connections)) {
           imported = parsed.connections;
           if (parsed.layout?.groups && parsed.layout?.order) {
@@ -5540,6 +5563,7 @@ export const useConnectionStore = defineStore("connection", () => {
     invalidateCompletionCache,
     invalidateMetadataCache,
     exportConnectionsToFile,
+    exportPlainConnectionsToFile,
     readImportFile,
     importConnectionsFromFile,
     applyDataGripKeychainPasswords,

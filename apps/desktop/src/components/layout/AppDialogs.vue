@@ -14,6 +14,7 @@ const SchemaDiagramDialog = defineAsyncComponent(() => import("@/components/diag
 const TableImportDialog = defineAsyncComponent(() => import("@/components/import/TableImportDialog.vue"));
 const FieldLineageDialog = defineAsyncComponent(() => import("@/components/lineage/FieldLineageDialog.vue"));
 const ConfigPassphraseDialog = defineAsyncComponent(() => import("@/components/config/ConfigPassphraseDialog.vue"));
+const ConfigExportModeDialog = defineAsyncComponent(() => import("@/components/config/ConfigExportModeDialog.vue"));
 const DatabaseSearchDialog = defineAsyncComponent(() => import("@/components/search/DatabaseSearchDialog.vue"));
 const DatabaseExportDialog = defineAsyncComponent(() => import("@/components/export/DatabaseExportDialog.vue"));
 const DataGenerateDialog = defineAsyncComponent(() => import("@/components/generate/DataGenerateDialog.vue"));
@@ -243,6 +244,7 @@ watch(
     :external-error="dialogs.configPassphraseError.value"
     @confirm="dialogs.configPassphraseMode.value === 'export' ? dialogs.onExportConfirm($event) : dialogs.onImportConfirm($event)"
   />
+  <ConfigExportModeDialog v-if="dialogs.showConfigExportModeDialog.value" v-model:open="dialogs.showConfigExportModeDialog.value" @encrypted="dialogs.onEncryptedExport" @plain="dialogs.onPlainExport" />
   <Dialog v-model:open="dialogs.showImportLayoutConfirm.value">
     <DialogContent class="sm:max-w-[400px]">
       <DialogHeader>

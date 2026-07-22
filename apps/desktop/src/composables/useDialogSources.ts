@@ -3,6 +3,7 @@ import { useI18n } from "vue-i18n";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import type { SidebarLayout } from "@/types/database";
+import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 
 const showTransferDialog = ref(false);
 const showSchemaDiffDialog = ref(false);
@@ -17,6 +18,7 @@ const showDatabaseExportDialog = ref(false);
 const showImportLayoutConfirm = ref(false);
 const pendingImportLayout = ref<SidebarLayout | null>(null);
 const showConfigPassphraseDialog = ref(false);
+const showConfigExportModeDialog = ref(false);
 const configPassphraseMode = ref<"export" | "import">("export");
 const configPassphraseError = ref("");
 const pendingImportContent = ref("");
@@ -221,6 +223,28 @@ export function useDialogSources() {
 
   // Config export/import helpers
   function onExportClick() {
+    // 普通导出只开放给 Web 内网版本，桌面端保持原有加密导出流程。
+    if (!isTauriRuntime()) {
+      showConfigExportModeDialog.value = true;
+      return;
+    }
+    configPassphraseMode.value = "export";
+    configPassphraseError.value = "";
+    showConfigPassphraseDialog.value = true;
+  }
+
+  async function onPlainExport() {
+    try {
+      await connectionStore.exportPlainConnectionsToFile();
+      showConfigExportModeDialog.value = false;
+      toast(t("configExport.exportPlainSuccess"), 2000);
+    } catch (e: any) {
+      toast(e?.message || String(e), 4000);
+    }
+  }
+
+  function onEncryptedExport() {
+    showConfigExportModeDialog.value = false;
     configPassphraseMode.value = "export";
     configPassphraseError.value = "";
     showConfigPassphraseDialog.value = true;
@@ -302,6 +326,7 @@ export function useDialogSources() {
     showImportLayoutConfirm,
     pendingImportLayout,
     showConfigPassphraseDialog,
+    showConfigExportModeDialog,
     configPassphraseMode,
     configPassphraseError,
     pendingImportContent,
@@ -344,6 +369,8 @@ export function useDialogSources() {
     databaseExportPrefillTables,
     databaseExportAllDatabases,
     onExportClick,
+    onPlainExport,
+    onEncryptedExport,
     onExportConfirm,
     onImportClick,
     onImportConfirm,
