@@ -7,6 +7,10 @@ set -eu
 # usable offline.
 source_dir=/opt/dbx/agents
 target_dir=${DBX_AGENT_DIR:-${DBX_DATA_DIR:-/app/data}/agents}
+case "$target_dir" in
+  /*) ;;
+  *) target_dir="$(pwd)/$target_dir" ;;
+esac
 
 # Do not follow a volume-provided symlink for the agent root or any path below
 # it. This keeps all initialization writes inside the selected data directory.
