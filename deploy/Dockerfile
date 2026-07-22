@@ -94,6 +94,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     libfreetype6 \
     libssl3 \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=backend /out/${TARGETPLATFORM}/dbx-web /usr/local/bin/
 COPY --from=frontend /app/dist /app/static

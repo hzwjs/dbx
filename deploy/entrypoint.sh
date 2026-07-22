@@ -22,16 +22,34 @@ check_root_path() {
   fi
 }
 
-has_symlink_component() {
+has_blocking_component() {
   path=$1
   while [ "$path" != "$target_dir" ] && [ "$path" != "/" ]; do
     [ -L "$path" ] && return 0
+    [ -e "$path" ] && [ ! -d "$path" ] && return 0
     path=$(dirname "$path")
   done
   return 1
 }
 
+jar_is_usable() {
+  jar_candidate=$1
+  [ -f "$jar_candidate" ] && [ ! -L "$jar_candidate" ] && [ -s "$jar_candidate" ] \
+    && unzip -p "$jar_candidate" META-INF/MANIFEST.MF 2>/dev/null \
+    | grep -Eq '^Main-Class:[[:space:]]*[^[:space:]]'
+}
+
+jre_is_usable() {
+  java_candidate=$1
+  [ -x "$java_candidate" ] && [ ! -L "$java_candidate" ] \
+    && timeout 5 "$java_candidate" -version >/dev/null 2>&1
+}
+
 check_root_path "$target_dir"
+if [ -e "$target_dir" ] && [ ! -d "$target_dir" ]; then
+  echo "Refusing non-directory agent path: $target_dir" >&2
+  exit 1
+fi
 mkdir -p "$target_dir"
 
 copy_file_if_missing() {
@@ -40,7 +58,7 @@ copy_file_if_missing() {
   if [ -L "$target_path" ] || [ -e "$target_path" ]; then
     return 0
   fi
-  if has_symlink_component "$target_path"; then
+  if has_blocking_component "$target_path"; then
     echo "Skipping symlink agent path: $target_path" >&2
     return 0
   fi
@@ -51,7 +69,7 @@ copy_file_if_missing() {
 remove_empty_file() {
   target_path=$1
   if [ -f "$target_path" ] && [ ! -L "$target_path" ] && [ ! -s "$target_path" ]; then
-    if has_symlink_component "$target_path"; then
+    if has_blocking_component "$target_path"; then
       echo "Skipping symlink agent path: $target_path" >&2
     else
       rm -f "$target_path"
@@ -63,11 +81,11 @@ copy_tree_missing() {
   source_root=$1
   target_root=$2
   if [ -L "$target_root" ]; then
-    echo "Skipping symlink agent directory: $target_root" >&2
+    echo "Skipping unsafe agent directory: $target_root" >&2
     return 0
   fi
-  if has_symlink_component "$target_root"; then
-    echo "Skipping symlink agent directory: $target_root" >&2
+  if has_blocking_component "$target_root"; then
+    echo "Skipping unsafe agent directory: $target_root" >&2
     return 0
   fi
   mkdir -p "$target_root"
@@ -75,7 +93,7 @@ copy_tree_missing() {
     relative_path=${source_path#"$source_root"/}
     target_path="$target_root/$relative_path"
     if [ -d "$source_path" ] && [ ! -L "$source_path" ]; then
-      if ! has_symlink_component "$target_path"; then
+      if ! has_blocking_component "$target_path"; then
         mkdir -p "$target_path"
       fi
     else
@@ -88,10 +106,16 @@ jar_path="$target_dir/drivers/rocketmq/agent.jar"
 jre_java_path="$target_dir/jre-21/bin/java"
 jar_was_usable=0
 jre_was_usable=0
-[ -s "$jar_path" ] && [ ! -L "$jar_path" ] && jar_was_usable=1
-[ -s "$jre_java_path" ] && [ ! -L "$jre_java_path" ] && jre_was_usable=1
-remove_empty_file "$jar_path"
-remove_empty_file "$jre_java_path"
+jar_is_usable "$jar_path" && jar_was_usable=1
+jre_is_usable "$jre_java_path" && jre_was_usable=1
+if [ "$jar_was_usable" -eq 0 ] && [ -f "$jar_path" ] && [ ! -L "$jar_path" ]; then
+  remove_empty_file "$jar_path"
+  [ -e "$jar_path" ] && rm -f "$jar_path"
+fi
+if [ "$jre_was_usable" -eq 0 ] && [ -f "$jre_java_path" ] && [ ! -L "$jre_java_path" ]; then
+  remove_empty_file "$jre_java_path"
+  [ -e "$jre_java_path" ] && rm -f "$jre_java_path"
+fi
 
 copy_tree_missing "$source_dir/jre-21" "$target_dir/jre-21"
 copy_tree_missing "$source_dir/drivers/rocketmq" "$target_dir/drivers/rocketmq"
@@ -104,8 +128,8 @@ find "$target_dir" -type f -exec chmod u+rw {} +
 
 jar_is_usable=0
 jre_is_usable=0
-[ -s "$jar_path" ] && [ ! -L "$jar_path" ] && jar_is_usable=1
-[ -s "$jre_java_path" ] && [ ! -L "$jre_java_path" ] && jre_is_usable=1
+jar_is_usable "$jar_path" && jar_is_usable=1
+jre_is_usable "$jre_java_path" && jre_is_usable=1
 
 state_needs_merge=1
 if [ -e "$target_dir/state.json" ] && jq -e '.installed_drivers.rocketmq and ((.jre_versions["21"] // .jre_version) != null)' "$target_dir/state.json" >/dev/null 2>&1; then
@@ -122,10 +146,18 @@ elif [ "$jar_is_usable" -eq 1 ] && [ "$jre_is_usable" -eq 1 ] \
   # built-in RocketMQ/JRE records into an existing data volume. AgentManager
   # uses these records in addition to checking the executable/JAR paths.
   if state_tmp=$(mktemp "$target_dir/.state.json.XXXXXX"); then
+    replace_builtin=0
+    if [ "$jar_was_usable" -eq 0 ] || [ "$jre_was_usable" -eq 0 ]; then
+      replace_builtin=1
+    fi
     if jq \
       --argjson image_driver "$(jq -c '.installed_drivers.rocketmq' "$source_dir/state.json")" \
+      --argjson replace_builtin "$replace_builtin" \
       '.jre_versions = ((.jre_versions // {}) + {"21":"21"})
-       | .installed_drivers = ({"rocketmq":$image_driver} + (.installed_drivers // {}))
+       | .installed_drivers = (if $replace_builtin == 1
+           then ((.installed_drivers // {}) + {"rocketmq":$image_driver})
+           else ({"rocketmq":$image_driver} + (.installed_drivers // {}))
+           end)
        | .java_runtime = (.java_runtime // {"mode":"managed"})' \
       "$target_dir/state.json" > "$state_tmp" \
       && mv "$state_tmp" "$target_dir/state.json"; then
