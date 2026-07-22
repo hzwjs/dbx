@@ -67,7 +67,7 @@ RUN case "$TARGETARCH" in \
     PKG_CONFIG_PATH="/usr/lib/$lib_arch/pkgconfig" \
     PKG_CONFIG_SYSROOT_DIR="/" \
     RUSTFLAGS="-L native=/usr/lib/$lib_arch" \
-    cargo zigbuild --release -p dbx-web --target "$rust_target" && \
+    CARGO_BUILD_JOBS=1 cargo zigbuild --release -p dbx-web --target "$rust_target" && \
     mkdir -p "/out/linux/$TARGETARCH" && \
     cp "/app/target/$rust_target/release/dbx-web" "/out/linux/$TARGETARCH/"
 

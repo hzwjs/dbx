@@ -620,7 +620,9 @@ async fn main() {
     if let Ok(static_dir) = std::env::var("DBX_STATIC_DIR") {
         use tower_http::services::{ServeDir, ServeFile};
         let index_path = format!("{}/index.html", static_dir);
-        let serve_dir = ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_path));
+        let serve_dir = ServeDir::new(&static_dir)
+            .append_index_html_on_directories(true)
+            .not_found_service(ServeFile::new(&index_path));
         app = app.fallback_service(serve_dir);
     }
 
