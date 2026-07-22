@@ -73,6 +73,7 @@ RUN case "$TARGETARCH" in \
 
 # Stage 3: Build the platform-independent Java agent with JDK 21.
 FROM --platform=$BUILDPLATFORM gradle:9.5-jdk21 AS rocketmq-agent
+USER root
 WORKDIR /app/agents
 COPY agents/ .
 RUN ./gradlew :rocketmq:shadowJar --no-daemon \
@@ -107,7 +108,6 @@ RUN printf '%s\n' \
     && chmod -R a-w /opt/dbx/agents
 ENV DBX_STATIC_DIR=/app/static
 ENV DBX_DATA_DIR=/app/data
-ENV DBX_AGENT_DIR=/app/data/agents
 EXPOSE 4224
 ENTRYPOINT ["dbx-entrypoint"]
 CMD ["dbx-web"]

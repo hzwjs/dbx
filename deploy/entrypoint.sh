@@ -6,40 +6,141 @@ set -eu
 # in /app/data survive image upgrades, while an empty/new volume is immediately
 # usable offline.
 source_dir=/opt/dbx/agents
-target_dir=${DBX_AGENT_DIR:-/app/data/agents}
-mkdir -p "$target_dir"
+target_dir=${DBX_AGENT_DIR:-${DBX_DATA_DIR:-/app/data}/agents}
 
-copy_if_missing() {
-  source_path=$1
-  target_path=$2
-  if [ ! -e "$target_path" ]; then
-    mkdir -p "$(dirname "$target_path")"
-    cp -a "$source_path" "$target_path"
+# Do not follow a volume-provided symlink for the agent root or any path below
+# it. This keeps all initialization writes inside the selected data directory.
+check_root_path() {
+  path=$1
+  if [ -L "$path" ]; then
+    echo "Refusing symlink agent path: $path" >&2
+    exit 1
   fi
 }
 
-copy_if_missing "$source_dir/jre-21" "$target_dir/jre-21"
-copy_if_missing "$source_dir/drivers/rocketmq" "$target_dir/drivers/rocketmq"
+has_symlink_component() {
+  path=$1
+  while [ "$path" != "$target_dir" ] && [ "$path" != "/" ]; do
+    [ -L "$path" ] && return 0
+    path=$(dirname "$path")
+  done
+  return 1
+}
 
-if [ ! -e "$target_dir/state.json" ]; then
+check_root_path "$target_dir"
+mkdir -p "$target_dir"
+
+copy_file_if_missing() {
+  source_path=$1
+  target_path=$2
+  if [ -L "$target_path" ] || [ -e "$target_path" ]; then
+    return 0
+  fi
+  if has_symlink_component "$target_path"; then
+    echo "Skipping symlink agent path: $target_path" >&2
+    return 0
+  fi
+  mkdir -p "$(dirname "$target_path")"
+  cp -a "$source_path" "$target_path"
+}
+
+remove_empty_file() {
+  target_path=$1
+  if [ -f "$target_path" ] && [ ! -L "$target_path" ] && [ ! -s "$target_path" ]; then
+    if has_symlink_component "$target_path"; then
+      echo "Skipping symlink agent path: $target_path" >&2
+    else
+      rm -f "$target_path"
+    fi
+  fi
+}
+
+copy_tree_missing() {
+  source_root=$1
+  target_root=$2
+  if [ -L "$target_root" ]; then
+    echo "Skipping symlink agent directory: $target_root" >&2
+    return 0
+  fi
+  if has_symlink_component "$target_root"; then
+    echo "Skipping symlink agent directory: $target_root" >&2
+    return 0
+  fi
+  mkdir -p "$target_root"
+  find "$source_root" -mindepth 1 -print | while IFS= read -r source_path; do
+    relative_path=${source_path#"$source_root"/}
+    target_path="$target_root/$relative_path"
+    if [ -d "$source_path" ] && [ ! -L "$source_path" ]; then
+      if ! has_symlink_component "$target_path"; then
+        mkdir -p "$target_path"
+      fi
+    else
+      copy_file_if_missing "$source_path" "$target_path"
+    fi
+  done
+}
+
+jar_path="$target_dir/drivers/rocketmq/agent.jar"
+jre_java_path="$target_dir/jre-21/bin/java"
+jar_was_usable=0
+jre_was_usable=0
+[ -s "$jar_path" ] && [ ! -L "$jar_path" ] && jar_was_usable=1
+[ -s "$jre_java_path" ] && [ ! -L "$jre_java_path" ] && jre_was_usable=1
+remove_empty_file "$jar_path"
+remove_empty_file "$jre_java_path"
+
+copy_tree_missing "$source_dir/jre-21" "$target_dir/jre-21"
+copy_tree_missing "$source_dir/drivers/rocketmq" "$target_dir/drivers/rocketmq"
+
+# `cp -a` preserves the read-only permissions of the image bundle. The
+# initialized data copy is intentionally writable so Driver Manager can later
+# replace or uninstall the agent/JRE without mutating the image layer.
+find "$target_dir" -type d -exec chmod u+rwx {} +
+find "$target_dir" -type f -exec chmod u+rw {} +
+
+jar_is_usable=0
+jre_is_usable=0
+[ -s "$jar_path" ] && [ ! -L "$jar_path" ] && jar_is_usable=1
+[ -s "$jre_java_path" ] && [ ! -L "$jre_java_path" ] && jre_is_usable=1
+
+state_needs_merge=1
+if [ -e "$target_dir/state.json" ] && jq -e '.installed_drivers.rocketmq and ((.jre_versions["21"] // .jre_version) != null)' "$target_dir/state.json" >/dev/null 2>&1; then
+  state_needs_merge=0
+fi
+
+if [ ! -e "$target_dir/state.json" ] && [ ! -L "$target_dir/state.json" ]; then
   cp -a "$source_dir/state.json" "$target_dir/state.json"
-else
+elif [ -L "$target_dir/state.json" ]; then
+  echo "Warning: refusing to replace symlink state.json; preserving existing state" >&2
+elif [ "$jar_is_usable" -eq 1 ] && [ "$jre_is_usable" -eq 1 ] \
+  && { [ "$jar_was_usable" -eq 0 ] || [ "$jre_was_usable" -eq 0 ] || [ "$state_needs_merge" -eq 1 ]; }; then
   # Keep user-installed drivers and Java settings, but merge the image's
   # built-in RocketMQ/JRE records into an existing data volume. AgentManager
   # uses these records in addition to checking the executable/JAR paths.
-  state_tmp="$target_dir/state.json.tmp.$$"
-  if jq \
-    --argjson image_driver "$(jq -c '.installed_drivers.rocketmq' "$source_dir/state.json")" \
-    '.jre_versions = ((.jre_versions // {}) + {"21":"21"})
-     | .installed_drivers = ({"rocketmq":$image_driver} + (.installed_drivers // {}))
-     | .java_runtime = (.java_runtime // {"mode":"managed"})' \
-    "$target_dir/state.json" > "$state_tmp" \
-    && mv "$state_tmp" "$target_dir/state.json"; then
-    :
+  if state_tmp=$(mktemp "$target_dir/.state.json.XXXXXX"); then
+    if jq \
+      --argjson image_driver "$(jq -c '.installed_drivers.rocketmq' "$source_dir/state.json")" \
+      '.jre_versions = ((.jre_versions // {}) + {"21":"21"})
+       | .installed_drivers = ({"rocketmq":$image_driver} + (.installed_drivers // {}))
+       | .java_runtime = (.java_runtime // {"mode":"managed"})' \
+      "$target_dir/state.json" > "$state_tmp" \
+      && mv "$state_tmp" "$target_dir/state.json"; then
+      :
+    else
+      rm -f "$state_tmp"
+      echo "Warning: could not merge built-in agent state; preserving existing state.json" >&2
+    fi
   else
-    rm -f "$state_tmp"
-    echo "Warning: could not merge built-in agent state; preserving existing state.json" >&2
+    echo "Warning: could not create a secure state temp file; preserving existing state.json" >&2
   fi
+fi
+
+if [ -f "$target_dir/state.json" ] && [ ! -L "$target_dir/state.json" ]; then
+  chmod u+rw "$target_dir/state.json"
+fi
+
+if [ "$jar_is_usable" -eq 0 ] || [ "$jre_is_usable" -eq 0 ]; then
+  echo "Warning: built-in RocketMQ agent or JRE is unavailable under $target_dir" >&2
 fi
 
 exec "$@"
