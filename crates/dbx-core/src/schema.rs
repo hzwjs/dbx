@@ -5046,6 +5046,74 @@ pub async fn list_triggers_core(
     .await
 }
 
+// These object kinds are currently exposed by the Xugu agent only. Keeping
+// the core route generic makes the protocol reusable without altering the
+// metadata behavior of any built-in database driver.
+pub async fn list_constraints_core(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<db::ConstraintInfo>, String> {
+    retry_metadata_connection(state, connection_id, Some(database), || async {
+        let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+        let db_config = connection_config(state, connection_id).await;
+        let connections = state.connections.read().await;
+        if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+            drop(connections);
+            let mut client = client.lock().await;
+            return client.list_constraints(database, schema, table, agent_metadata_timeout(db_config.as_ref())).await;
+        }
+        Ok(vec![])
+    })
+    .await
+}
+
+pub async fn list_partitions_core(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<db::PartitionInfo>, String> {
+    retry_metadata_connection(state, connection_id, Some(database), || async {
+        let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+        let db_config = connection_config(state, connection_id).await;
+        let connections = state.connections.read().await;
+        if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+            drop(connections);
+            let mut client = client.lock().await;
+            return client.list_partitions(database, schema, table, agent_metadata_timeout(db_config.as_ref())).await;
+        }
+        Ok(vec![])
+    })
+    .await
+}
+
+pub async fn list_subpartitions_core(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<db::SubpartitionInfo>, String> {
+    retry_metadata_connection(state, connection_id, Some(database), || async {
+        let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+        let db_config = connection_config(state, connection_id).await;
+        let connections = state.connections.read().await;
+        if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
+            drop(connections);
+            let mut client = client.lock().await;
+            return client
+                .list_subpartitions(database, schema, table, agent_metadata_timeout(db_config.as_ref()))
+                .await;
+        }
+        Ok(vec![])
+    })
+    .await
+}
+
 pub async fn list_functions_core(
     state: &AppState,
     connection_id: &str,

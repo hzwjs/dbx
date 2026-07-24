@@ -87,7 +87,7 @@ import { toMongoCollectionKind } from "@/lib/sidebar/mongoCollectionMutation";
 import { completionSchemasFromTree, completionTablesFromTree } from "@/lib/metadata/completionTreeIndex";
 import { kvRootNodeLabel } from "@/lib/kv/kvRootPresentation";
 import { REDIS_SCAN_PAGE_SIZE_DEFAULT } from "@/lib/redis/redisKeyPattern";
-import { appendAgentDriverUpdateHint, hasAgentDriverUpdate, type AgentDriverInstallState } from "@/lib/connection/agentDriverInstallHint";
+import { appendAgentDriverUpdateHint, hasAgentDriverUpdate, hasInstalledAgentVersion, type AgentDriverInstallState } from "@/lib/connection/agentDriverInstallHint";
 import { appendConnectionErrorHints } from "@/lib/connection/connectionErrorHints";
 import { appendVisibleDatabaseSelection } from "@/lib/connection/connectionVisibleDatabases";
 import { configuredDatabaseProductName, connectionConfigFingerprint, normalizeDatabaseConnectionInfo } from "@/lib/connection/connectionDatabaseInfo";
@@ -115,6 +115,7 @@ const SIDEBAR_DATABASE_STORAGE_CACHE_TTL_MS = 30_000;
 export const COMPLETION_METADATA_CONCURRENCY = 2;
 const MONGO_LEGACY_DRIVER_PROFILE = "mongodb-legacy";
 const MONGO_LEGACY_DRIVER_LABEL = "MongoDB (Legacy)";
+const XUGU_TABLE_CHILD_METADATA_AGENT_VERSION = "0.1.23";
 const SUPERSEDED_CONNECTION_ATTEMPT_MESSAGE = "Connection attempt was superseded by a newer attempt";
 function sidebarObjectGroupPageSize(): number {
   const settingsStore = useSettingsStore();
@@ -271,6 +272,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const lastConnectionHealthCheckAt = ref<Record<string, number>>({});
   const agentDrivers = ref<AgentDriverInstallState[]>([]);
   let agentDriversRefreshPromise: Promise<void> | null = null;
+  let localAgentDriversRefreshPromise: Promise<void> | null = null;
   const loadedTreeNodeChildrenIds = ref<Set<string>>(new Set());
   const connectionErrors = ref<Record<string, string>>({});
   const connectingIds = ref<Set<string>>(new Set());
@@ -667,6 +669,27 @@ export const useConnectionStore = defineStore("connection", () => {
         agentDriversRefreshPromise = null;
       });
     return agentDriversRefreshPromise;
+  }
+
+  function refreshLocalAgentDrivers(): Promise<void> {
+    if (localAgentDriversRefreshPromise) return localAgentDriversRefreshPromise;
+    localAgentDriversRefreshPromise = api
+      .listInstalledAgentsLocal()
+      .then((drivers) => {
+        agentDrivers.value = drivers;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        localAgentDriversRefreshPromise = null;
+      });
+    return localAgentDriversRefreshPromise;
+  }
+
+  async function supportsXuguTableChildMetadata(): Promise<boolean> {
+    if (!hasInstalledAgentVersion(agentDrivers.value, "xugu", XUGU_TABLE_CHILD_METADATA_AGENT_VERSION)) {
+      await refreshLocalAgentDrivers();
+    }
+    return hasInstalledAgentVersion(agentDrivers.value, "xugu", XUGU_TABLE_CHILD_METADATA_AGENT_VERSION);
   }
 
   function maybeAppendAgentDriverUpdateHint(connectionId: string, baseMessage: string) {
@@ -3805,9 +3828,26 @@ export const useConnectionStore = defineStore("connection", () => {
     ];
 
     const config = getConfig(connectionId);
-    const metadataCapabilities = getTableMetadataCapabilities(effectiveDatabaseTypeForConnection(config));
+    const effectiveDbType = effectiveDatabaseTypeForConnection(config);
+    const metadataCapabilities = getTableMetadataCapabilities(effectiveDbType);
+    const isXugu = effectiveDbType === "xugu";
+    const supportsXuguChildMetadata = isXugu && node.type === "table" && (await supportsXuguTableChildMetadata());
+    if (supportsXuguChildMetadata) {
+      children.push({
+        id: `${parentId}:__constraints`,
+        label: "tree.constraints",
+        type: "group-constraints",
+        connectionId,
+        database,
+        schema,
+        catalog,
+        tableName: table,
+        isExpanded: false,
+        children: [],
+      });
+    }
     if ((node.type === "table" || node.type === "mongo-collection") && !parseSqlServerLinkedSchema(schema)) {
-      if (metadataCapabilities.indexes) {
+      if (metadataCapabilities.indexes && !isXugu) {
         children.push({
           id: `${parentId}:__indexes`,
           label: "tree.indexes",
@@ -3850,6 +3890,50 @@ export const useConnectionStore = defineStore("connection", () => {
           isExpanded: false,
           children: [],
         });
+      }
+      if (isXugu) {
+        if (metadataCapabilities.indexes) {
+          children.push({
+            id: `${parentId}:__indexes`,
+            label: "tree.indexes",
+            type: "group-indexes",
+            connectionId,
+            database,
+            schema,
+            catalog,
+            tableName: table,
+            isExpanded: false,
+            children: [],
+          });
+        }
+        if (supportsXuguChildMetadata) {
+          children.push(
+            {
+              id: `${parentId}:__table-partitions`,
+              label: "tree.partitions",
+              type: "group-table-partitions",
+              connectionId,
+              database,
+              schema,
+              catalog,
+              tableName: table,
+              isExpanded: false,
+              children: [],
+            },
+            {
+              id: `${parentId}:__table-subpartitions`,
+              label: "tree.subpartitions",
+              type: "group-table-subpartitions",
+              connectionId,
+              database,
+              schema,
+              catalog,
+              tableName: table,
+              isExpanded: false,
+              children: [],
+            },
+          );
+        }
       }
     }
 
@@ -4031,6 +4115,93 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
+  async function loadConstraints(connectionId: string, database: string, table: string, schema?: string, nodeId?: string, catalog?: string) {
+    const parentId = nodeId ?? `${connectionId}:${database}:${schema || ""}:${table}:__constraints`;
+    const node = findNode(treeNodes.value, parentId);
+    if (!node) return;
+    node.isLoading = true;
+    try {
+      const constraints = await api.listConstraints(connectionId, database, metadataQuerySchema(connectionId, database, schema), table, catalog);
+      setChildren(
+        node,
+        constraints.map((constraint) => ({
+          id: `${parentId}:${constraint.name}`,
+          label: `${constraint.name} (${constraint.constraint_type})${constraint.valid ? "" : " · INVALID"}`,
+          type: "constraint" as const,
+          connectionId,
+          database,
+          schema,
+          tableName: table,
+          meta: constraint,
+        })),
+      );
+      node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
+    } finally {
+      node.isLoading = false;
+    }
+  }
+
+  async function loadPartitions(connectionId: string, database: string, table: string, schema?: string, nodeId?: string, catalog?: string) {
+    const parentId = nodeId ?? `${connectionId}:${database}:${schema || ""}:${table}:__table-partitions`;
+    const node = findNode(treeNodes.value, parentId);
+    if (!node) return;
+    node.isLoading = true;
+    try {
+      const partitions = await api.listPartitions(connectionId, database, metadataQuerySchema(connectionId, database, schema), table, catalog);
+      setChildren(
+        node,
+        partitions.map((partition) => ({
+          id: `${parentId}:${partition.name}`,
+          label: `${partition.name} (${partition.partition_type}${partition.value ? `: ${partition.value}` : ""})`,
+          type: "partition" as const,
+          connectionId,
+          database,
+          schema,
+          tableName: table,
+          meta: partition,
+        })),
+      );
+      node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
+    } finally {
+      node.isLoading = false;
+    }
+  }
+
+  async function loadSubpartitions(connectionId: string, database: string, table: string, schema?: string, nodeId?: string, catalog?: string) {
+    const parentId = nodeId ?? `${connectionId}:${database}:${schema || ""}:${table}:__table-subpartitions`;
+    const node = findNode(treeNodes.value, parentId);
+    if (!node) return;
+    node.isLoading = true;
+    try {
+      const partitions = await api.listSubpartitions(connectionId, database, metadataQuerySchema(connectionId, database, schema), table, catalog);
+      setChildren(
+        node,
+        partitions.map((partition) => ({
+          id: `${parentId}:${partition.name}`,
+          label: `${partition.name} (${partition.partition_type}${partition.value ? `: ${partition.value}` : ""})`,
+          type: "subpartition" as const,
+          connectionId,
+          database,
+          schema,
+          tableName: table,
+          meta: partition,
+        })),
+      );
+      node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
+    } finally {
+      node.isLoading = false;
+    }
+  }
+
   function collectExpandedNodeIds(nodes: TreeNode[], ids = new Set<string>()): Set<string> {
     for (const node of nodes) {
       if (node.isExpanded) ids.add(node.id);
@@ -4107,6 +4278,12 @@ export const useConnectionStore = defineStore("connection", () => {
       await loadForeignKeys(node.connectionId, node.database, node.tableName, node.schema, node.id, node.catalog);
     } else if (node.type === "group-triggers" && node.connectionId && hasTreeNodeDatabaseContext(node) && node.tableName) {
       await loadTriggers(node.connectionId, node.database, node.tableName, node.schema, node.id, node.catalog);
+    } else if (node.type === "group-constraints" && node.connectionId && hasTreeNodeDatabaseContext(node) && node.tableName) {
+      await loadConstraints(node.connectionId, node.database, node.tableName, node.schema, node.id, node.catalog);
+    } else if (node.type === "group-table-partitions" && node.connectionId && hasTreeNodeDatabaseContext(node) && node.tableName) {
+      await loadPartitions(node.connectionId, node.database, node.tableName, node.schema, node.id, node.catalog);
+    } else if (node.type === "group-table-subpartitions" && node.connectionId && hasTreeNodeDatabaseContext(node) && node.tableName) {
+      await loadSubpartitions(node.connectionId, node.database, node.tableName, node.schema, node.id, node.catalog);
     } else if (objectTypesForGroupNode(node.type)) {
       await loadObjectGroupChildren(node, options);
     } else if (node.type === "group-partitions") {
@@ -5668,10 +5845,14 @@ export const useConnectionStore = defineStore("connection", () => {
     loadMoreObjectGroupChildren,
     loadAllObjectGroupChildren,
     loadTableGroups,
+    loadTreeNodeChildren,
     loadColumns,
     loadIndexes,
     loadForeignKeys,
     loadTriggers,
+    loadConstraints,
+    loadPartitions,
+    loadSubpartitions,
     listCompletionTables,
     listCompletionObjects,
     listCompletionColumns,
