@@ -103,6 +103,7 @@ import {
   nextTransposeState,
   nextTransposeStateForRecordCount,
   restoreDataGridAfterTranspose,
+  shouldAutoTransposeSingleRow,
   transposeRecordIndexesForMode,
   transposeRecordWidthsForDensity,
   transposeFieldWidth,
@@ -269,6 +270,7 @@ interface DataGridProps {
   executionDatabase?: string;
   schema?: string;
   context?: "results" | "table-data";
+  autoTransposeSingleRow?: boolean;
   sourceColumns?: Array<string | undefined>;
   initialWhereInput?: string;
   initialOrderByInput?: string;
@@ -389,6 +391,18 @@ watch(
           loading: props.loading,
         });
       });
+    });
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.result,
+  (result) => {
+    if (!shouldAutoTransposeSingleRow({ enabled: !!props.autoTransposeSingleRow, preserveTranspose: preserveTransposeOnNextResult.value, rowCount: result.rows.length, columnCount: result.columns.length })) return;
+    nextTick(() => {
+      if (props.result !== result || !props.autoTransposeSingleRow || result.rows.length !== 1 || result.columns.length <= 1) return;
+      applyTransposeState({ showTranspose: true, transposeRowIndex: 0 });
     });
   },
   { immediate: true },

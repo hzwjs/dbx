@@ -3614,6 +3614,8 @@ export default withEnglishFallback({
     compactColumnHeaderActionsDescription: "Mueve formatear y filtrar a un menú de más acciones para priorizar el nombre de columna.",
     dataGridQuickEntry: "Entrada rápida en grilla",
     dataGridQuickEntryDescription: "Al activarlo, editar una celda o llenar la fila vacía inferior se guarda en la base de datos al perder el foco. Agiliza la captura frecuente, pero puede causar escrituras accidentales.",
+    dataGridAutoTransposeSingleRow: "Transponer automáticamente los resultados de consulta de una sola fila",
+    dataGridAutoTransposeSingleRowDescription: "Al activarlo, los resultados de consultas SQL con exactamente una fila y varias columnas cambian automáticamente a la vista transpuesta.",
     infiniteScroll: "Carga de desplazamiento infinito",
     autoCalculateTotalRows: "Calcular automáticamente el total de filas",
     autoCalculateTotalRowsDescription: "Ejecuta COUNT(*) automáticamente tras cada consulta para mostrar el total de filas coincidentes. Desactivado por defecto para mantener rápidas las consultas grandes; puedes calcularlo cuando quieras desde el pie de resultados.",
