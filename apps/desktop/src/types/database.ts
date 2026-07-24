@@ -565,6 +565,7 @@ export interface QueryResultRun {
   resultSortMode?: "database" | "local";
   resultLocalSortOriginalRows?: QueryResult["rows"];
   resultLocalSortOriginalMongoDocuments?: QueryResult["mongo_documents"];
+  resultLocalSortOriginalMongoCopyDocuments?: QueryResult["mongo_copy_documents"];
   orderByInput?: string;
   resultPageSql?: string;
   resultPageLimit?: number;
@@ -796,6 +797,7 @@ export interface QueryTab {
   resultSortMode?: "database" | "local";
   resultLocalSortOriginalRows?: QueryResult["rows"];
   resultLocalSortOriginalMongoDocuments?: QueryResult["mongo_documents"];
+  resultLocalSortOriginalMongoCopyDocuments?: QueryResult["mongo_copy_documents"];
   orderByInput?: string;
   resultPageSql?: string;
   resultPageLimit?: number;
