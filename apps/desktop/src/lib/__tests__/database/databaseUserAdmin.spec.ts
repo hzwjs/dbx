@@ -59,6 +59,8 @@ describe("database user admin providers", () => {
     const provider = getDatabaseUserAdminProvider("doris");
 
     expect(provider?.listUsersSql()).toBe("SHOW ALL GRANTS;");
+    expect(provider?.fallbackListUsersSql?.()).toBe("SHOW GRANTS;");
+    expect(provider?.parseFallbackUsers).toBe(dorisUsersResult);
     expect(provider?.showGrantsSql({ user: "reporter", host: "%" })).toBe("SHOW GRANTS FOR 'reporter'@'%';");
     expect(provider?.alterPasswordSql?.({ user: "reporter", host: "%" }, "new'secret")).toBe("SET PASSWORD FOR 'reporter'@'%' = PASSWORD('new''secret');");
     expect(dorisPrivilegeTargetSql("analytics", "daily`rollup")).toBe("`internal`.`analytics`.`daily``rollup`");

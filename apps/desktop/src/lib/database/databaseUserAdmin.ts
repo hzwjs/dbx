@@ -116,6 +116,10 @@ export function dorisListUsersSql(): string {
   return "SHOW ALL GRANTS;";
 }
 
+export function dorisListCurrentUserSql(): string {
+  return "SHOW GRANTS;";
+}
+
 export function dorisUsersResult(result: QueryResult): DatabaseUserIdentity[] {
   const userIndex = columnIndex(result, "UserIdentity");
   if (userIndex < 0) return [];
@@ -634,7 +638,9 @@ export const dorisUserAdminProvider: DatabaseUserAdminProvider = {
   dialect: "mysql",
   defaultScope: "table",
   listUsersSql: dorisListUsersSql,
+  fallbackListUsersSql: dorisListCurrentUserSql,
   parseUsers: dorisUsersResult,
+  parseFallbackUsers: dorisUsersResult,
   showGrantsSql: mysqlShowGrantsSql,
   parseGrants: dorisGrantsResult,
   createUserSql: mysqlCreateUserSql,
